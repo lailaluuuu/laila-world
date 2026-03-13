@@ -2,12 +2,7 @@ import * as THREE from 'three';
 import { TILE_SIZE } from '../simulation/World.js';
 import { TerrainRenderer } from './TerrainRenderer.js';
 
-// Realistic bay / wild coat
-const COAT = 0x5c4033;
-const COAT_DARK = 0x3d2817;
-const MUZZLE = 0x4a3728;
 const HOOF = 0x1a1510;
-const MANE_TAIL = 0x2a1810;
 
 export class WildHorseRenderer {
   constructor(scene, horses, world) {
@@ -21,37 +16,39 @@ export class WildHorseRenderer {
   }
 
   _build() {
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: COAT,
-      roughness: 0.82,
-      metalness: 0.02,
-    });
-    const darkMat = new THREE.MeshStandardMaterial({
-      color: COAT_DARK,
-      roughness: 0.88,
-    });
-    const muzzleMat = new THREE.MeshStandardMaterial({
-      color: MUZZLE,
-      roughness: 0.9,
-    });
     const hoofMat = new THREE.MeshStandardMaterial({
       color: HOOF,
       roughness: 0.95,
     });
-    const maneMat = new THREE.MeshStandardMaterial({
-      color: MANE_TAIL,
-      roughness: 0.92,
-    });
-    this._mats.push(bodyMat, darkMat, muzzleMat, hoofMat, maneMat);
+    this._mats.push(hoofMat);
 
     for (let i = 0; i < this.horses.length; i++) {
-      const root = new THREE.Group();
+      const horseSim = this.horses[i];
+      const P = horseSim.coatPreset;
 
-      // Model built in local space: forward = -Z (Three.js lookAt convention)
+      const bodyMat = new THREE.MeshStandardMaterial({
+        color: P.coat,
+        roughness: 0.82,
+        metalness: 0.02,
+      });
+      const darkMat = new THREE.MeshStandardMaterial({
+        color: P.dark,
+        roughness: 0.88,
+      });
+      const muzzleMat = new THREE.MeshStandardMaterial({
+        color: P.muzzle,
+        roughness: 0.9,
+      });
+      const maneMat = new THREE.MeshStandardMaterial({
+        color: P.mane,
+        roughness: 0.92,
+      });
+      this._mats.push(bodyMat, darkMat, muzzleMat, maneMat);
+
+      const root = new THREE.Group();
       const horse = new THREE.Group();
       horse.position.y = 0.38;
 
-      // Barrel (chest–belly)
       const barrel = new THREE.Mesh(
         new THREE.CylinderGeometry(0.2, 0.22, 0.5, 10, 1, false),
         bodyMat,
@@ -61,7 +58,6 @@ export class WildHorseRenderer {
       barrel.castShadow = true;
       this._geoms.push(barrel.geometry);
 
-      // Withers / shoulder hump
       const withers = new THREE.Mesh(
         new THREE.SphereGeometry(0.16, 8, 6),
         bodyMat,
@@ -71,7 +67,6 @@ export class WildHorseRenderer {
       withers.castShadow = true;
       this._geoms.push(withers.geometry);
 
-      // Neck (tapered)
       const neck = new THREE.Mesh(
         new THREE.CylinderGeometry(0.09, 0.14, 0.38, 8, 1, false),
         bodyMat,
@@ -81,7 +76,6 @@ export class WildHorseRenderer {
       neck.castShadow = true;
       this._geoms.push(neck.geometry);
 
-      // Mane strip
       const mane = new THREE.Mesh(
         new THREE.BoxGeometry(0.06, 0.14, 0.36),
         maneMat,
@@ -91,7 +85,6 @@ export class WildHorseRenderer {
       mane.castShadow = true;
       this._geoms.push(mane.geometry);
 
-      // Head + muzzle (read as one block + wedge)
       const head = new THREE.Mesh(
         new THREE.BoxGeometry(0.14, 0.16, 0.22),
         bodyMat,
@@ -120,7 +113,6 @@ export class WildHorseRenderer {
       earL.castShadow = earR.castShadow = true;
       this._geoms.push(earL.geometry);
 
-      // Tail
       const tail = new THREE.Mesh(
         new THREE.CylinderGeometry(0.03, 0.02, 0.45, 6, 1, false),
         maneMat,
@@ -130,6 +122,7 @@ export class WildHorseRenderer {
       tail.castShadow = true;
       this._geoms.push(tail.geometry);
 
+      const self = this;
       function makeLeg(material, x, z) {
         const pivot = new THREE.Group();
         pivot.position.set(x, 0, z);
@@ -152,14 +145,14 @@ export class WildHorseRenderer {
         hoof.position.y = -0.42;
         hoof.castShadow = true;
         pivot.add(upper, lower, hoof);
-        this._geoms.push(upper.geometry, lower.geometry, hoof.geometry);
-        return { pivot, upper, lower };
+        self._geoms.push(upper.geometry, lower.geometry, hoof.geometry);
+        return { pivot };
       }
 
-      const legFL = makeLeg.call(this, bodyMat, 0.12, -0.14);
-      const legFR = makeLeg.call(this, bodyMat, -0.12, -0.14);
-      const legBL = makeLeg.call(this, bodyMat, 0.12, 0.2);
-      const legBR = makeLeg.call(this, bodyMat, -0.12, 0.2);
+      const legFL = makeLeg(bodyMat, 0.12, -0.14);
+      const legFR = makeLeg(bodyMat, -0.12, -0.14);
+      const legBL = makeLeg(bodyMat, 0.12, 0.2);
+      const legBR = makeLeg(bodyMat, -0.12, 0.2);
 
       horse.add(
         barrel,
@@ -182,7 +175,7 @@ export class WildHorseRenderer {
       this.entries.push({
         root,
         horse,
-        horseSim: this.horses[i],
+        horseSim,
         legs: [legFL, legFR, legBL, legBR],
         tail,
       });
@@ -200,7 +193,7 @@ export class WildHorseRenderer {
 
   update() {
     for (const entry of this.entries) {
-      const { root, horse, horseSim, legs } = entry;
+      const { root, horse, horseSim, legs, tail } = entry;
       const tile = this.world.getTile(
         Math.floor(horseSim.x),
         Math.floor(horseSim.z),
@@ -209,28 +202,51 @@ export class WildHorseRenderer {
       const wx = horseSim.x * TILE_SIZE;
       const wz = horseSim.z * TILE_SIZE;
 
-      root.position.set(wx, surfY + 0.02, wz);
       const fx = horseSim.facingX;
       const fz = horseSim.facingZ;
       const len = Math.hypot(fx, fz) || 1;
+      root.position.set(wx, surfY + 0.02, wz);
       root.lookAt(wx + fx / len, surfY + 0.35, wz + fz / len);
 
-      // gallopPhase advances in sim (~2+ rad/s while moving)
       const phase = horseSim.gallopPhase;
+      const gait = horseSim.gait;
+      const jumping = horseSim.jumpT > 0 && horseSim.jumpT < 1;
+      const jumpY =
+        jumping && horseSim.jumpT > 0
+          ? Math.sin(Math.PI * Math.min(1, horseSim.jumpT)) * 0.38
+          : 0;
+      root.position.y += jumpY;
 
-      // Vertical bounce + slight pitch (suspension)
-      const bounce = Math.abs(Math.sin(phase * 2)) * 0.055;
+      let bounce = 0;
+      let swing = 0.22;
+      let pitch = 0.02;
+      if (gait === 'run' && !jumping) {
+        bounce = Math.abs(Math.sin(phase * 2)) * 0.055;
+        swing = 0.52;
+        pitch = 0.06;
+      } else if (gait === 'walk' && !jumping) {
+        bounce = Math.abs(Math.sin(phase)) * 0.022;
+        swing = 0.28;
+        pitch = 0.025;
+      } else if (gait === 'idle') {
+        bounce = Math.sin(phase * 0.5) * 0.012;
+        swing = 0.06;
+        pitch = 0.01;
+      }
+      if (jumping) {
+        swing *= 0.35;
+        pitch = 0.03;
+      }
+
       horse.position.y = 0.38 + bounce;
-      horse.rotation.x = Math.sin(phase * 2) * 0.06;
+      horse.rotation.x = Math.sin(phase * (gait === 'run' ? 2 : 1)) * pitch;
 
-      // Gallop leg order (approx): RH, LH, LF, RF — diagonal pairs swing together visually
-      const swing = 0.55;
-      legs[0].pivot.rotation.x = swing * Math.sin(phase); // FL
-      legs[1].pivot.rotation.x = swing * Math.sin(phase + Math.PI); // FR
-      legs[2].pivot.rotation.x = swing * Math.sin(phase + Math.PI * 0.5); // BL
-      legs[3].pivot.rotation.x = swing * Math.sin(phase + Math.PI * 1.5); // BR
+      legs[0].pivot.rotation.x = swing * Math.sin(phase);
+      legs[1].pivot.rotation.x = swing * Math.sin(phase + Math.PI);
+      legs[2].pivot.rotation.x = swing * Math.sin(phase + Math.PI * 0.5);
+      legs[3].pivot.rotation.x = swing * Math.sin(phase + Math.PI * 1.5);
 
-      entry.tail.rotation.z = Math.sin(phase * 2) * 0.15;
+      tail.rotation.z = Math.sin(phase * 2) * (gait === 'run' ? 0.15 : 0.08);
     }
   }
 }
