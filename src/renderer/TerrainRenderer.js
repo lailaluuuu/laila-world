@@ -647,39 +647,50 @@ export class TerrainRenderer {
         scale: [2.2, 0.65, 0.80],
         rotY: wSeed, seed: wSeed,
       }];
-      // Blowhole spray: pooled points, burst on random timer
-      const spoutCount = 64;
-      const spoutPos = new Float32Array(spoutCount * 3);
-      const spoutGeom = new THREE.BufferGeometry();
-      spoutGeom.setAttribute('position', new THREE.BufferAttribute(spoutPos, 3));
-      const spoutMat = new THREE.PointsMaterial({
-        color: 0xb8e8ff,
-        size: 0.07,
-        transparent: true,
-        opacity: 0.9,
-        depthWrite: false,
-        sizeAttenuation: true,
+      // Blowhole: mist (soft column) + spray (droplets); frequent random spouts + optional double blow
+      const mkSpoutLayer = (count, matOpts) => {
+        const pos = new Float32Array(count * 3);
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        const mat = new THREE.PointsMaterial({
+          transparent: true,
+          depthWrite: false,
+          sizeAttenuation: true,
+          ...matOpts,
+        });
+        const pts = new THREE.Points(geom, mat);
+        this.scene.add(pts);
+        this._meshes.push(pts);
+        const particles = Array.from({ length: count }, () => ({
+          life: 0,
+          maxLife: 1,
+          x: 0,
+          y: 0,
+          z: 0,
+          vx: 0,
+          vy: 0,
+          vz: 0,
+        }));
+        return { points: pts, particles, geom, mat };
+      };
+      const mistLayer = mkSpoutLayer(96, {
+        color: 0xf5fbff,
+        size: 0.14,
+        opacity: 0.38,
+        blending: THREE.AdditiveBlending,
       });
-      const spoutPoints = new THREE.Points(spoutGeom, spoutMat);
-      this.scene.add(spoutPoints);
-      this._meshes.push(spoutPoints);
-      const spoutParticles = Array.from({ length: spoutCount }, () => ({
-        life: 0,
-        maxLife: 1,
-        x: 0,
-        y: 0,
-        z: 0,
-        vx: 0,
-        vy: 0,
-        vz: 0,
-      }));
+      const sprayLayer = mkSpoutLayer(52, {
+        color: 0xc5e8ff,
+        size: 0.055,
+        opacity: 0.88,
+      });
 
       const whaleConfig = {
         label: 'Whale', icon: '🐋',
         description: 'A great whale, sole sovereign of the deep — ancient and unhurried.',
         driftRadius: 0.05, driftSpeed: 0.08, bobAmount: 0.04, bobSpeed: 0.6,
         mobile: true, moveSpeed: 0.08, tileTypes: [TileType.DEEP_WATER], wanderRadius: 12,
-        whaleSpout: { points: spoutPoints, particles: spoutParticles },
+        whaleSpout: { mist: mistLayer, spray: sprayLayer },
       };
       whaleMesh.castShadow = true;
       addAnimated(whaleMesh, whaleInstances, whaleConfig, [
@@ -750,45 +761,108 @@ export class TerrainRenderer {
           inst._sparkleX = px; inst._sparkleY = py; inst._sparkleZ = pz;
         }
 
-        // Whale blowhole spray (random spouts)
+        // Whale blowhole: often spouts; mist + spray; ~35% double blow like surfacing whales
         if (config.whaleSpout && i === 0) {
-          const spout = config.whaleSpout;
+          const { mist, spray } = config.whaleSpout;
           const ry0 = inst.rotY;
           const forward = 0.32;
           const bhX = px + Math.sin(ry0) * forward;
           const bhY = py + inst.scale[1] * 0.16 + 0.06;
           const bhZ = pz + Math.cos(ry0) * forward;
           if (inst._nextSpoutT === undefined) {
-            inst._nextSpoutT = t + 1.5 + Math.random() * 6;
+            inst._nextSpoutT = t + 0.4 + Math.random() * 2.2;
           }
-          if (t >= inst._nextSpoutT) {
-            inst._nextSpoutT = t + 2 + Math.random() * 9;
-            const burst = 14 + Math.floor(Math.random() * 22);
-            let spawned = 0;
-            for (const p of spout.particles) {
-              if (spawned >= burst) break;
+          const doBurst = t >= inst._nextSpoutT;
+          if (doBurst) {
+            inst._nextSpoutT = t + 0.45 + Math.random() * 2.5;
+            inst._followUpT =
+              Math.random() < 0.4 ? t + 0.32 + Math.random() * 0.78 : null;
+
+            const spawnMist = (n) => {
+              let s = 0;
+              for (const p of mist.particles) {
+                if (s >= n) break;
+                if (p.life <= 0) {
+                  p.x = bhX + (Math.random() - 0.5) * 0.07;
+                  p.y = bhY - Math.random() * 0.02;
+                  p.z = bhZ + (Math.random() - 0.5) * 0.07;
+                  p.vx = (Math.random() - 0.5) * 0.28;
+                  p.vy = 0.32 + Math.random() * 0.52;
+                  p.vz = (Math.random() - 0.5) * 0.28;
+                  p.maxLife = 0.75 + Math.random() * 0.85;
+                  p.life = p.maxLife;
+                  s++;
+                }
+              }
+            };
+            const spawnSpray = (n) => {
+              let s = 0;
+              for (const p of spray.particles) {
+                if (s >= n) break;
+                if (p.life <= 0) {
+                  p.x = bhX + (Math.random() - 0.5) * 0.035;
+                  p.y = bhY;
+                  p.z = bhZ + (Math.random() - 0.5) * 0.035;
+                  p.vx = (Math.random() - 0.5) * 0.16;
+                  p.vy = 0.55 + Math.random() * 0.62;
+                  p.vz = (Math.random() - 0.5) * 0.16;
+                  p.maxLife = 0.38 + Math.random() * 0.42;
+                  p.life = p.maxLife;
+                  s++;
+                }
+              }
+            };
+            spawnMist(28 + Math.floor(Math.random() * 38));
+            spawnSpray(12 + Math.floor(Math.random() * 22));
+          }
+          if (inst._followUpT != null && t >= inst._followUpT) {
+            inst._followUpT = null;
+            let sM = 0;
+            for (const p of mist.particles) {
+              if (sM >= 18 + Math.floor(Math.random() * 20)) break;
               if (p.life <= 0) {
-                p.x = bhX + (Math.random() - 0.5) * 0.04;
+                p.x = bhX + (Math.random() - 0.5) * 0.05;
                 p.y = bhY;
-                p.z = bhZ + (Math.random() - 0.5) * 0.04;
-                p.vx = (Math.random() - 0.5) * 0.2;
-                p.vy = 0.42 + Math.random() * 0.55;
-                p.vz = (Math.random() - 0.5) * 0.2;
-                p.maxLife = 0.4 + Math.random() * 0.55;
+                p.z = bhZ + (Math.random() - 0.5) * 0.05;
+                p.vx = (Math.random() - 0.5) * 0.22;
+                p.vy = 0.38 + Math.random() * 0.45;
+                p.vz = (Math.random() - 0.5) * 0.22;
+                p.maxLife = 0.55 + Math.random() * 0.65;
                 p.life = p.maxLife;
-                spawned++;
+                sM++;
+              }
+            }
+            let sS = 0;
+            for (const p of spray.particles) {
+              if (sS >= 8 + Math.floor(Math.random() * 12)) break;
+              if (p.life <= 0) {
+                p.x = bhX + (Math.random() - 0.5) * 0.03;
+                p.y = bhY;
+                p.z = bhZ + (Math.random() - 0.5) * 0.03;
+                p.vx = (Math.random() - 0.5) * 0.12;
+                p.vy = 0.48 + Math.random() * 0.5;
+                p.vz = (Math.random() - 0.5) * 0.12;
+                p.maxLife = 0.32 + Math.random() * 0.35;
+                p.life = p.maxLife;
+                sS++;
               }
             }
           }
-          const arr = spout.points.geometry.attributes.position.array;
-          for (let pi = 0; pi < spout.particles.length; pi++) {
-            const p = spout.particles[pi];
+
+          let mistActive = 0;
+          for (let pi = 0; pi < mist.particles.length; pi++) {
+            const p = mist.particles[pi];
+            const arr = mist.geom.attributes.position.array;
             if (p.life > 0) {
+              mistActive++;
               p.life -= realDelta;
+              p.vx *= 1 - 0.35 * realDelta;
+              p.vz *= 1 - 0.35 * realDelta;
+              p.vy *= 1 - 0.22 * realDelta;
+              p.vy -= 0.22 * realDelta;
               p.x += p.vx * realDelta;
               p.y += p.vy * realDelta;
               p.z += p.vz * realDelta;
-              p.vy -= 0.85 * realDelta;
               arr[pi * 3] = p.x;
               arr[pi * 3 + 1] = p.y;
               arr[pi * 3 + 2] = p.z;
@@ -798,7 +872,34 @@ export class TerrainRenderer {
               arr[pi * 3 + 2] = 0;
             }
           }
-          spout.points.geometry.attributes.position.needsUpdate = true;
+          mist.geom.attributes.position.needsUpdate = true;
+          mist.mat.opacity = 0.22 + Math.min(0.42, mistActive * 0.0045);
+
+          for (let pi = 0; pi < spray.particles.length; pi++) {
+            const p = spray.particles[pi];
+            const arr = spray.geom.attributes.position.array;
+            if (p.life > 0) {
+              p.life -= realDelta;
+              p.vx *= 1 - 0.5 * realDelta;
+              p.vz *= 1 - 0.5 * realDelta;
+              p.vy -= 1.05 * realDelta;
+              p.x += p.vx * realDelta;
+              p.y += p.vy * realDelta;
+              p.z += p.vz * realDelta;
+              arr[pi * 3] = p.x;
+              arr[pi * 3 + 1] = p.y;
+              arr[pi * 3 + 2] = p.z;
+            } else {
+              arr[pi * 3] = 0;
+              arr[pi * 3 + 1] = -800;
+              arr[pi * 3 + 2] = 0;
+            }
+          }
+          spray.geom.attributes.position.needsUpdate = true;
+          let sprayActive = 0;
+          for (const p of spray.particles) if (p.life > 0) sprayActive++;
+          spray.mat.opacity =
+            sprayActive > 0 ? 0.72 + Math.min(0.22, sprayActive * 0.014) : 0.88;
         }
 
         const ry = inst.rotY;
