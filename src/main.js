@@ -8,6 +8,7 @@ import { AgentRenderer }     from './renderer/AgentRenderer.js';
 import { BuildingRenderer }  from './renderer/BuildingRenderer.js';
 import { WildHorse }         from './simulation/WildHorse.js';
 import { WildHorseRenderer } from './renderer/WildHorseRenderer.js';
+import { ButterflyRenderer } from './renderer/ButterflyRenderer.js';
 import { TimeSystem }        from './systems/TimeSystem.js';
 import { WeatherSystem }     from './systems/WeatherSystem.js';
 
@@ -60,6 +61,7 @@ async function init() {
   let world; let conceptGraph; let terrainRenderer; let ar; let buildingRenderer; let time; let weather;
   let horses = [];
   let horseRenderer;
+  let butterflyRenderer;
   try {
   world = new World();
   world.naturalFires = new Map();
@@ -73,6 +75,7 @@ async function init() {
   ar = new AgentRenderer(wr.scene, agents, world);
   horses = world.getWildHorseSpawnPoints(WILD_HORSE_COUNT).map(p => new WildHorse(p.x, p.z));
   horseRenderer = new WildHorseRenderer(wr.scene, horses, world);
+  butterflyRenderer = new ButterflyRenderer(wr.scene, world);
   buildingRenderer = new BuildingRenderer(wr.scene, world);
 
   time = new TimeSystem();
@@ -163,6 +166,7 @@ async function init() {
     terrainRenderer.dispose();
     ar.dispose();
     horseRenderer.dispose();
+    butterflyRenderer.dispose();
     buildingRenderer.dispose();
 
     world = new World();
@@ -178,6 +182,7 @@ async function init() {
     horses.length = 0;
     world.getWildHorseSpawnPoints(WILD_HORSE_COUNT).forEach(p => horses.push(new WildHorse(p.x, p.z)));
     horseRenderer = new WildHorseRenderer(wr.scene, horses, world);
+    butterflyRenderer = new ButterflyRenderer(wr.scene, world);
     buildingRenderer = new BuildingRenderer(wr.scene, world);
 
     time.gameTime = (8 / 24) * 120; // reset to 08:00
@@ -628,6 +633,7 @@ async function init() {
     });
     ar.update();
     horseRenderer.update();
+    butterflyRenderer.update(delta > 0 ? delta : 0, weather.current === 'CLEAR');
     buildingRenderer.checkAgents(agents);
     wr.updateRain(realDelta, weather.isRaining, weather.isStorm);
     wr.render();
