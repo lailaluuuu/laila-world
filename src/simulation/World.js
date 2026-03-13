@@ -5,8 +5,10 @@ export const WORLD_HEIGHT = 32;
 export const TileType = {
   DEEP_WATER: 'DEEP_WATER',
   WATER:    'WATER',
+  BEACH:    'BEACH',
   GRASS:    'GRASS',
   FOREST:   'FOREST',
+  DESERT:   'DESERT',
   STONE:    'STONE',
   MOUNTAIN: 'MOUNTAIN',
 };
@@ -39,12 +41,28 @@ export class World {
         const n = this._noise(x, z);
         let type;
         if      (n < -0.22) type = TileType.WATER;
+        else if (n < -0.08) type = TileType.BEACH;   // coastal strip
         else if (n <  0.18) type = TileType.GRASS;
         else if (n <  0.52) type = TileType.FOREST;
         else if (n <  0.72) type = TileType.STONE;
         else                type = TileType.MOUNTAIN;
 
-        const baseElev = { WATER: 0.04, GRASS: 0.12, FOREST: 0.22, STONE: 0.32, MOUNTAIN: 1.5 }[type];
+        // Desert: arid heat patches within flat terrain
+        // Uses a large-scale secondary noise (different frequency + seed phase)
+        if (type === TileType.GRASS || type === TileType.FOREST) {
+          const s = this.seed * 0.491;
+          const arid = (
+            Math.sin(x * 0.09 + s)        * Math.cos(z * 0.07 + s * 1.6) * 0.50 +
+            Math.sin(x * 0.17 + s * 1.9)  * Math.cos(z * 0.13 + s * 0.5) * 0.30 +
+            Math.cos(x * 0.05 + z * 0.08 + s * 1.2)                       * 0.20
+          ) / 1.0 + 0.5; // range ≈ 0–1
+          if (arid > 0.91) type = TileType.DESERT;
+        }
+
+        const baseElev = {
+          WATER: 0.04, BEACH: 0.06, GRASS: 0.12, FOREST: 0.22,
+          DESERT: 0.12, STONE: 0.32, MOUNTAIN: 1.5,
+        }[type];
         const elev = baseElev + (Math.sin(x * 3.7 + z * 2.3 + this.seed) * 0.5 + 0.5) * 0.06;
 
         tiles[z][x] = { type, x, z, elevation: elev, resource: 1.0 };
@@ -67,7 +85,7 @@ export class World {
 
     // Third pass: guarantee at least one tile of each base terrain type.
     // Uses fixed fallback positions spread around the map so every world is playable.
-    const baseElevations = { WATER: 0.04, GRASS: 0.12, FOREST: 0.22, STONE: 0.32, MOUNTAIN: 1.5 };
+    const baseElevations = { WATER: 0.04, BEACH: 0.06, GRASS: 0.12, FOREST: 0.22, DESERT: 0.12, STONE: 0.32, MOUNTAIN: 1.5 };
     const present = new Set();
     for (let z = 0; z < this.height; z++)
       for (let x = 0; x < this.width; x++)
