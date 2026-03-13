@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>World</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <canvas id="world-canvas"></canvas>
+
+  <div id="hud">
+
+    <div id="hud-top">
+      <div id="world-info">
+        <span id="world-day">Day 1</span>
+        <span id="world-season">Spring</span>
+        <span id="world-time">☀️ Noon</span>
+        <span id="world-weather">☀️ Clear</span>
+        <span id="world-temp">☀️ 13°C</span>
+      </div>
+      <div id="pop-info">
+        <span>Population: <span id="population">0</span></span>
+        <span>Replenishment: <span id="replenishment">—</span></span>
+      </div>
+      <button id="hamburger-btn" title="Settings">☰</button>
+    </div>
+
+    <div id="settings-panel" class="hidden">
+      <div class="settings-title">Settings</div>
+      <div class="settings-divider"></div>
+
+      <div id="stats-section" class="stats-section">
+        <div class="settings-title">Stats</div>
+        <div class="stat-row"><span class="stat-label">Game overs</span><span id="stat-game-overs">0</span></div>
+        <div class="stat-row"><span class="stat-label">Resets</span><span id="stat-worlds">0</span></div>
+        <div class="stat-row"><span class="stat-label">Total births</span><span id="stat-births">0</span></div>
+        <div class="stat-row"><span class="stat-label">Longest survival</span><span id="stat-days">—</span></div>
+        <div class="stat-row"><span class="stat-label">Peak population</span><span id="stat-peak">0</span></div>
+        <div class="stat-row"><span class="stat-label">Most discoveries</span><span id="stat-discoveries">0</span></div>
+      </div>
+      <div class="settings-divider"></div>
+
+      <div class="setting-row">
+        <label class="setting-label" for="pop-slider">Starting population</label>
+        <span class="setting-value" id="pop-value">12</span>
+      </div>
+      <input type="range" id="pop-slider" min="5" max="100" step="1" value="12">
+
+      <div class="setting-row" style="margin-top:12px">
+        <label class="setting-label" for="max-pop-slider">Max population</label>
+        <span class="setting-value" id="max-pop-value">100</span>
+      </div>
+      <input type="range" id="max-pop-slider" min="40" max="300" step="5" value="100">
+
+      <div class="settings-divider" style="margin-top:14px"></div>
+      <button id="reset-btn">↺ Reset World</button>
+      <p class="reset-warning">Generates a new world with a new seed.<br>All progress will be lost.</p>
+    </div>
+
+    <div id="notifications">
+      <div id="notifications-env" class="notification-group" data-type="env">
+        <div class="notification-group-label">Environment</div>
+      </div>
+      <div id="notifications-social" class="notification-group" data-type="social">
+        <div class="notification-group-label">Social</div>
+      </div>
+    </div>
+
+    <div id="hud-bottom">
+      <div id="concepts-panel">
+        <div class="panel-title">Discoveries</div>
+        <div id="concepts-list"><em>None yet...</em></div>
+      </div>
+      <div id="speed-controls">
+        <button class="speed-btn" data-speed="0">⏸</button>
+        <button class="speed-btn active" data-speed="1">1×</button>
+        <button class="speed-btn" data-speed="5">5×</button>
+        <button class="speed-btn" data-speed="20">20×</button>
+      </div>
+    </div>
+
+    <div id="info-panel" class="hidden">
+      <button id="info-close">×</button>
+      <div id="info-content"></div>
+    </div>
+
+  </div>
+
+  <div id="loading">
+    <div id="loading-text">Generating world...</div>
+  </div>
+
+  <div id="error-banner" class="hidden">
+    <span id="error-message"></span>
+    <button id="error-dismiss">×</button>
+  </div>
+
+  <div id="game-over" class="hidden">
+    <div id="game-over-card">
+      <div id="game-over-title">Civilization Lost</div>
+      <div id="game-over-subtitle">Your people are gone</div>
+      <div id="game-over-stats"></div>
+      <button id="game-over-reset">↺ Begin Again</button>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

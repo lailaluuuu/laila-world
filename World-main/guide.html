@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>World — Game Guide</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #1a2535;
+      color: #dce8f5;
+      line-height: 1.65;
+      padding: 2rem 1rem;
+    }
+    .page { max-width: 860px; margin: 0 auto; }
+    h1 { font-size: 2.2rem; color: #7ec8f0; margin-bottom: 0.25rem; }
+    .subtitle { color: #8aa6c0; margin-bottom: 2.5rem; font-size: 1.05rem; }
+    h2 { font-size: 1.35rem; color: #a8d4f0; margin: 2.2rem 0 0.75rem; border-bottom: 1px solid #2e4560; padding-bottom: 0.4rem; }
+    h3 { font-size: 1.05rem; color: #c5e0f8; margin: 1.4rem 0 0.4rem; }
+    p { margin-bottom: 0.8rem; }
+    ul, ol { margin: 0.5rem 0 0.9rem 1.5rem; }
+    li { margin-bottom: 0.35rem; }
+    code { background: #253545; border-radius: 3px; padding: 0.1em 0.4em; font-size: 0.88em; color: #90cef5; }
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.9rem; margin: 1rem 0 1.4rem; }
+    .card {
+      background: #1e3048;
+      border: 1px solid #2e4560;
+      border-radius: 8px;
+      padding: 0.9rem 1rem;
+    }
+    .card-icon { font-size: 1.6rem; margin-bottom: 0.3rem; }
+    .card-name { font-weight: 600; color: #c5e0f8; margin-bottom: 0.2rem; }
+    .card-desc { font-size: 0.85rem; color: #8aa6c0; }
+    .chain { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0.6rem 0 1rem; }
+    .chain-item { background: #1e3048; border: 1px solid #2e4560; border-radius: 5px; padding: 0.25em 0.6em; font-size: 0.85rem; }
+    .chain-arrow { color: #4a8aba; font-weight: bold; }
+    .tip { background: #1a3a20; border-left: 3px solid #4caf50; padding: 0.7rem 1rem; border-radius: 0 6px 6px 0; margin: 0.8rem 0; font-size: 0.9rem; }
+    .warn { background: #3a2800; border-left: 3px solid #f59e0b; padding: 0.7rem 1rem; border-radius: 0 6px 6px 0; margin: 0.8rem 0; font-size: 0.9rem; }
+    table { width: 100%; border-collapse: collapse; margin: 0.8rem 0 1.2rem; font-size: 0.9rem; }
+    th { background: #1e3048; padding: 0.5rem 0.8rem; text-align: left; color: #a8d4f0; border-bottom: 2px solid #2e4560; }
+    td { padding: 0.45rem 0.8rem; border-bottom: 1px solid #1e3048; vertical-align: top; }
+    tr:nth-child(even) td { background: #19283a; }
+    .badge { display: inline-block; border-radius: 4px; padding: 0.15em 0.55em; font-size: 0.78em; font-weight: 600; }
+    .era1 { background: #1a3a20; color: #6fcf7a; }
+    .era2 { background: #1e3048; color: #7ec8f0; }
+    hr { border: none; border-top: 1px solid #2e4560; margin: 2rem 0; }
+    a { color: #7ec8f0; }
+    .cmd-block { display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0; }
+    .cmd-block code { flex: 1; padding: 0.5rem 0.75rem; }
+    .copy-btn {
+      flex-shrink: 0; background: #2e4560; border: 1px solid #4a6a8a; color: #a8d4f0;
+      padding: 0.35rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
+    }
+    .copy-btn:hover { background: #3a5570; }
+    .copy-btn.copied { background: #1a3a20; border-color: #4caf50; color: #6fcf7a; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <h1>🌍 World — Game Guide</h1>
+  <p class="subtitle">A passive emergent-civilisation simulator. Watch primitive agents discover fire, language, and society — or fade from the earth.</p>
+
+  <h2>Overview</h2>
+  <p>
+    <strong>World</strong> is a god-game / emergent-civilisation simulator. You are a silent observer
+    watching small societies grow from nothing. Agents wander a procedurally generated landscape,
+    satisfy basic needs, and independently discover a tree of civilisation concepts.
+    Your role is to watch, click for details, and occasionally nudge through the settings.
+    There is no direct control over individual agents.
+  </p>
+  <p>
+    The game ends when the last agent dies. Success is measured by how far your civilisation advanced —
+    which concepts were discovered, how large the population grew, and how long it survived.
+  </p>
+
+  <h2>Running the Game</h2>
+  <ol>
+    <li>Open a terminal in <code>d:\Coding\World\</code></li>
+    <li>Run:
+      <div class="cmd-block">
+        <code id="run-cmd">python -m http.server 8080</code>
+        <button class="copy-btn" onclick="var b=this; navigator.clipboard.writeText(document.getElementById('run-cmd').textContent); b.classList.add('copied'); b.textContent='Copied!'; setTimeout(function(){ b.classList.remove('copied'); b.textContent='Copy'; }, 1500);">Copy</button>
+      </div>
+    </li>
+    <li>Open <a href="http://localhost:8080" target="_blank" rel="noopener">http://localhost:8080</a> in a modern browser (Chrome or Edge recommended)</li>
+  </ol>
+  <div class="tip">The game requires a local server because it fetches <code>data/concepts.json</code>.
+  Opening <code>index.html</code> directly as a file will fail with a CORS error.</div>
+
+  <h2>The HUD</h2>
+  <p>The heads-up display shows simulation state at a glance:</p>
+
+  <table>
+    <thead><tr><th>Element</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Day N</strong></td><td>Current game-day. One day = ~30 game-seconds at 1× speed.</td></tr>
+      <tr><td><strong>Season</strong></td><td>Spring / Summer / Autumn / Winter. Seasons cycle every 7 days and affect food regeneration, weather, and energy drain.</td></tr>
+      <tr><td><strong>Time of Day</strong></td><td>🌙 Night / 🌅 Dawn / ☀️ Noon / 🌆 Dusk. Purely cosmetic — sun orbits visually but agents are not day/night aware.</td></tr>
+      <tr><td><strong>Weather</strong></td><td>☀️ Clear / ☁️ Cloudy / 🌧️ Rain / ⛈️ Storm. Affects energy drain and triggers lightning during storms.</td></tr>
+      <tr><td><strong>Temperature</strong></td><td>°C estimate (season base + weather modifier). Cold weather increases energy drain. Fire, shelter, clothing, and housing each reduce the impact.</td></tr>
+      <tr><td><strong>Population N / C</strong></td><td>Alive agents / carrying capacity. Capacity is environment-based (food tile count) and rises with Agriculture.</td></tr>
+      <tr><td><strong>Replenishment N/day</strong></td><td>Average births per game-day over the last 5 days. Tracks population health trend.</td></tr>
+      <tr><td><strong>Discoveries panel</strong></td><td>Lists every concept at least one living agent knows. Shows <em>knownBy / alive</em> ratio.</td></tr>
+      <tr><td><strong>Notifications</strong></td><td>Environment (weather changes, lightning, new worlds) and Social (discoveries, births) events. Up to 3 per channel at once.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Speed Controls</h2>
+  <p>Bottom-right buttons: <strong>⏸ 1× 5× 20×</strong></p>
+  <ul>
+    <li><strong>⏸ Pause</strong> — freeze the simulation (camera still moves)</li>
+    <li><strong>1×</strong> — real-time (default, best for observation)</li>
+    <li><strong>5×</strong> — fast-forward to early discoveries</li>
+    <li><strong>20×</strong> — skip to mid-game concepts quickly; resource depletion and crashes are more likely</li>
+  </ul>
+  <div class="warn">At 20× speed, many events fire simultaneously. The game is designed to handle this gracefully, but very large populations at extreme speed may show visual jitter.</div>
+
+  <h2>Interacting with the World</h2>
+  <h3>Click an Agent</h3>
+  <p>Click near any coloured figure to open the <strong>Agent Info Panel</strong>:</p>
+  <ul>
+    <li><strong>Name</strong> — procedurally generated (e.g. "Elorin")</li>
+    <li><strong>State</strong> — current behaviour (see Agent States below)</li>
+    <li><strong>Hunger / Energy bars</strong> — red = critical, orange = low</li>
+    <li><strong>Age</strong> — current and maximum lifespan. Concepts extend max age.</li>
+    <li><strong>Curiosity</strong> — discovery probability multiplier (30–80%)</li>
+    <li><strong>Task</strong> — role assigned after Organisation is discovered</li>
+    <li><strong>Knowledge tags</strong> — all concepts this agent knows</li>
+  </ul>
+
+  <h3>Click a Tile</h3>
+  <p>Click an empty tile to open the <strong>Tile Info Panel</strong>:</p>
+  <ul>
+    <li>Tile type, coordinates, and description</li>
+    <li>Food bar (Grass and Forest tiles only) — shows current resource level</li>
+  </ul>
+
+  <h3>Settings (☰)</h3>
+  <ul>
+    <li><strong>Starting population</strong> — 5 to 100 agents; applies on the next reset</li>
+    <li><strong>Max population</strong> — cap on carrying capacity (40–300); births blocked above this. Default 100.</li>
+    <li><strong>↺ Reset World</strong> — generates a new world with a new random seed; all progress is lost</li>
+  </ul>
+
+  <h2>The World</h2>
+  <p>The world is a <strong>32×32 tile grid</strong> generated procedurally from a random seed. Each run is different.</p>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-icon">🌊</div>
+      <div class="card-name">Water</div>
+      <div class="card-desc">Fish swim here. Impassable until Sailing is discovered. Shoreline tiles are discovery hotspots for Fishing and Sailing.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🌿</div>
+      <div class="card-name">Grass</div>
+      <div class="card-desc">Primary food source. Berry bushes (~55% of tiles). Sheep and pigs graze here. Good spawn zone. Regenerates food over time.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🌲</div>
+      <div class="card-name">Forest</div>
+      <div class="card-desc">Rich in food and discovery. Pine trees (~82% of tiles). Key site for Fire, Hunting, Clothing, Weaving, Rope, Medicine. Regenerates more slowly than Grass.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🪨</div>
+      <div class="card-name">Stone</div>
+      <div class="card-desc">Rocky terrain. No food. Discovery site for Stone Tools, Metal Tools, Pottery. Agents pass through but don't gather here.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">⛰️</div>
+      <div class="card-name">Mountain</div>
+      <div class="card-desc">Impassable until Mountain Climbing is discovered. Snow-capped peaks. Discovery requires being adjacent (on Stone tiles) without stone_tools needed.</div>
+    </div>
+  </div>
+
+  <h3>Food Resources</h3>
+  <p>Each Grass and Forest tile has a <code>resource</code> value (0–1) representing food availability.
+  Agents deplete it on gathering; it regenerates over time. Visual bushes/trees don't change but clicking the tile shows the food bar.</p>
+  <table>
+    <thead><tr><th>Tile</th><th>Base regen/sec</th><th>Spring</th><th>Summer</th><th>Autumn</th><th>Winter</th></tr></thead>
+    <tbody>
+      <tr><td>Grass</td><td>0.002</td><td>×1.5</td><td>×2.0</td><td>×1.0</td><td>×0.35</td></tr>
+      <tr><td>Forest</td><td>0.0012</td><td>×1.5</td><td>×2.0</td><td>×1.0</td><td>×0.35</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Agent System</h2>
+  <p>Each agent is an autonomous entity with needs, knowledge, and a simple task they optimise for each tick.</p>
+
+  <h3>Needs</h3>
+  <ul>
+    <li><strong>Hunger</strong> (0–1): drains at 1/90 per game-second. Agents gather food when hunger drops below ~0.25 (lower if a Gatherer task).</li>
+    <li><strong>Energy</strong> (0–1): drains at 1/200 per game-second, multiplied by the weather energy mult. Agents sleep when energy drops below ~0.2.</li>
+  </ul>
+
+  <h3>Agent States</h3>
+  <table>
+    <thead><tr><th>State</th><th>Colour</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>Wandering</td><td>Grey-blue</td><td>Moving to a random nearby tile; re-evaluates needs every 3–7 seconds. In cold/stormy weather without fire, biases toward Forest.</td></tr>
+      <tr><td>Gathering</td><td>Amber</td><td>Heading to the nearest food tile (Grass or Forest) within 8 tiles.</td></tr>
+      <tr><td>Sleeping</td><td>Blue-violet</td><td>Resting in place; energy recovers faster. Duration 10–18 game-seconds.</td></tr>
+      <tr><td>Socializing</td><td>Purple</td><td>Currently passing knowledge to or receiving it from a nearby agent. Happens automatically during all states.</td></tr>
+      <tr><td>Discovering</td><td>Orange glow</td><td>Just made a discovery. Brief pause then returns to Wandering. An orange flash appears at their location.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Life &amp; Death</h3>
+  <ul>
+    <li>Agents are born with a max age of <strong>60–120 game-seconds</strong>, extended by fire (×15%), shelter (×10%), cooking (×20%), and medicine (×25%).</li>
+    <li>With all four, a single agent can live up to 180 game-seconds — 3× the base lifespan.</li>
+    <li>Agents die of old age (health → 0). There is currently no starvation or disease death, though near-zero hunger causes very slow energy loss.</li>
+  </ul>
+
+  <h3>Reproduction</h3>
+  <p>Two adults within 3.5 tiles who both have:</p>
+  <ul>
+    <li>Hunger &gt; 0.40 and Energy &gt; 0.20</li>
+    <li>No active reproduction cooldown (18–38 game-seconds after last birth; shorter with Community)</li>
+    <li>Age ≥ 20 game-seconds (maturity)</li>
+  </ul>
+  <p>…will produce a child at a point between them. The child starts as a juvenile (smaller sprite) and becomes adult at age 20.</p>
+
+  <h3>Carrying Capacity</h3>
+  <p>Maximum allowed living agents = <code>min(max_pop_setting, max(40, 25 + food_tile_count × 0.18))</code>, multiplied by 1.25 if Agriculture is known. The max cap is configurable in Settings (default 100, range 40–300). Births are blocked above this cap.</p>
+
+  <h3>Tasks (requires Organisation)</h3>
+  <p>Once any agent discovers Organisation, they adopt a specialisation role:</p>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-icon">🌾</div>
+      <div class="card-name">Gatherer</div>
+      <div class="card-desc">Gathers food proactively at hunger &lt;0.55. +5% gather bonus.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">📢</div>
+      <div class="card-name">Teacher</div>
+      <div class="card-desc">Moves toward other agents to share knowledge. +10% spread rate.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🔭</div>
+      <div class="card-name">Scout</div>
+      <div class="card-desc">Wanders up to 3 tiles further than normal. +15% discovery chance.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">💚</div>
+      <div class="card-name">Carer</div>
+      <div class="card-desc">Rests earlier (energy threshold 0.35) with +10% recovery speed.</div>
+    </div>
+  </div>
+
+  <h2>The Concept Graph</h2>
+  <p>Knowledge is represented as a directed graph of <strong>26 concepts</strong> across two eras.
+  Agents discover concepts when they satisfy conditions and pass a probability roll.
+  Once known, concepts spread between agents who spend time near each other.</p>
+
+  <h3>How Discovery Works</h3>
+  <ol>
+    <li>Each tick, an agent checks every undiscovered concept.</li>
+    <li>If prerequisites are met and all conditions pass, a roll of <code>discovery_probability × curiosity × delta</code> determines success.</li>
+    <li>Scouts add +15%, Curiosity Culture adds +20%.</li>
+    <li>If the agent is near a natural fire (lightning strike), fire discovery chance is ×30.</li>
+  </ol>
+
+  <h3>How Spreading Works</h3>
+  <p>Every 4–6 game-seconds, agents within 5 tiles of each other socialise. For each concept one knows and the other doesn't, a roll of <code>spread_rate × 4</code> per check determines transfer. Language doubles spread rate; Writing adds ×1.5 on top; Teacher task adds ×1.1.</p>
+
+  <h3>Discovery Conditions</h3>
+  <table>
+    <thead><tr><th>Condition type</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>tile_type</code></td><td>Agent must be standing on a specific tile type</td></tr>
+      <tr><td><code>has_concept</code></td><td>Agent already knows a specific concept</td></tr>
+      <tr><td><code>adjacent_to</code></td><td>Agent's current tile must border a specific tile type</td></tr>
+      <tr><td><code>population_nearby</code></td><td>N other agents must be within 6 tiles</td></tr>
+    </tbody>
+  </table>
+
+  <hr>
+
+  <h2>Era 1 Concepts</h2>
+  <div class="card-grid">
+    <div class="card"><div class="card-icon">🔥</div><div class="card-name">Fire</div><div class="card-desc">Discovered in Forest. No prerequisites. Boosts lifespan ×15%, reduces cold penalty. Enables Cooking. Lightning strikes near fire tiles boost discovery ×30.</div></div>
+    <div class="card"><div class="card-icon">🪨</div><div class="card-name">Stone Tools</div><div class="card-desc">Discovered on Stone. +20% gather yield, −28% tile depletion. Unlocks Shelter, Clothing, Weaving, Fishing, Hunting, Metal Tools, Mountain Climbing.</div></div>
+    <div class="card"><div class="card-icon">💬</div><div class="card-name">Language</div><div class="card-desc">Discovered when 3+ agents are nearby. Doubles the spread rate of all other concepts. Prerequisite for Writing, Community, Organisation.</div></div>
+    <div class="card"><div class="card-icon">🏚️</div><div class="card-name">Shelter</div><div class="card-desc">Requires Stone Tools. +50% rest recovery, lifespan ×10%, reduces cold penalty. Unlocks Housing, Cooking, Medicine, Art, Animal Domestication, Agriculture, Community.</div></div>
+    <div class="card"><div class="card-icon">🍖</div><div class="card-name">Cooking</div><div class="card-desc">Requires Fire. ×1.6 hunger from food. Lifespan ×20%. The single biggest quality-of-life upgrade.</div></div>
+    <div class="card"><div class="card-icon">🧥</div><div class="card-name">Clothing</div><div class="card-desc">Requires Stone Tools. Discovered in Forest. −20% cold energy penalty. Keeps agents active longer in winter and storms.</div></div>
+    <div class="card"><div class="card-icon">🌿</div><div class="card-name">Medicine</div><div class="card-desc">Requires Cooking + Shelter. Lifespan ×25%. The biggest single lifespan extension.</div></div>
+    <div class="card"><div class="card-icon">🧵</div><div class="card-name">Weaving</div><div class="card-desc">Requires Stone Tools. +20% rest recovery. Unlocks Rope.</div></div>
+    <div class="card"><div class="card-icon">🪢</div><div class="card-name">Rope</div><div class="card-desc">Requires Stone Tools + Weaving. Additional +10% rest recovery.</div></div>
+    <div class="card"><div class="card-icon">🎣</div><div class="card-name">Fishing</div><div class="card-desc">Requires Stone Tools + adjacent Water. +10% gather efficiency.</div></div>
+    <div class="card"><div class="card-icon">🏹</div><div class="card-name">Hunting</div><div class="card-desc">Requires Stone Tools. Discovered in Forest. +35% gather efficiency in Forest tiles.</div></div>
+  </div>
+
+  <h2>Era 2 Concepts</h2>
+  <div class="card-grid">
+    <div class="card"><div class="card-icon">🏠</div><div class="card-name">Housing</div><div class="card-desc">Requires Shelter. −20% cold penalty, +15% rest recovery on top of shelter.</div></div>
+    <div class="card"><div class="card-icon">⛵</div><div class="card-name">Sailing</div><div class="card-desc">No prerequisites. Discovered adjacent to Water. Unlocks water travel — agents can cross ocean tiles.</div></div>
+    <div class="card"><div class="card-icon">🏔️</div><div class="card-name">Mountain Climbing</div><div class="card-desc">Requires Stone Tools. Discovered adjacent to Mountain. Unlocks mountain traversal.</div></div>
+    <div class="card"><div class="card-icon">🏺</div><div class="card-name">Pottery</div><div class="card-desc">Requires Fire. Discovered on Stone. +15% hunger from food. Unlocks Preservation.</div></div>
+    <div class="card"><div class="card-icon">🍯</div><div class="card-name">Preservation</div><div class="card-desc">Requires Cooking + Pottery. +12% hunger from food (cumulative with Pottery and Cooking).</div></div>
+    <div class="card"><div class="card-icon">📜</div><div class="card-name">Writing</div><div class="card-desc">Requires Language. +50% spread rate on top of Language. Knowledge travels fast once Writing spreads.</div></div>
+    <div class="card"><div class="card-icon">⚒️</div><div class="card-name">Metal Tools</div><div class="card-desc">Requires Fire + Stone Tools. +25% gather efficiency (on top of Stone Tools).</div></div>
+    <div class="card"><div class="card-icon">🎭</div><div class="card-name">Art</div><div class="card-desc">Requires Fire + Shelter. No direct stat effect; prerequisite for Curiosity Culture.</div></div>
+    <div class="card"><div class="card-icon">🐕</div><div class="card-name">Animal Domestication</div><div class="card-desc">Requires Shelter + Language. +25% gather efficiency. Unlocks Herding.</div></div>
+    <div class="card"><div class="card-icon">🌾</div><div class="card-name">Agriculture</div><div class="card-desc">Requires Shelter + Stone Tools. +35% gather efficiency on Grass tiles. Increases carrying capacity ×1.25.</div></div>
+    <div class="card"><div class="card-icon">🐑</div><div class="card-name">Herding</div><div class="card-desc">Requires Animal Domestication. +15% gather efficiency.</div></div>
+    <div class="card"><div class="card-icon">👥</div><div class="card-name">Community</div><div class="card-desc">Requires Language + Shelter. Reduces reproduction cooldown by 18%. More children, more growth.</div></div>
+    <div class="card"><div class="card-icon">📋</div><div class="card-name">Organisation</div><div class="card-desc">Requires Language + Community. Unlocks Task roles — Gatherer, Teacher, Scout, Carer specialisations.</div></div>
+    <div class="card"><div class="card-icon">🔬</div><div class="card-name">Curiosity Culture</div><div class="card-desc">Requires Language + Art. +20% discovery probability for all agents who know it.</div></div>
+  </div>
+
+  <h2>Key Discovery Chains</h2>
+  <div class="chain">
+    <span class="chain-item">🔥 Fire</span><span class="chain-arrow">→</span>
+    <span class="chain-item">🍖 Cooking</span><span class="chain-arrow">→</span>
+    <span class="chain-item">🌿 Medicine</span><span class="chain-arrow">→</span>
+    <span class="chain-item">Lifespan ×1.70</span>
+  </div>
+  <div class="chain">
+    <span class="chain-item">🪨 Stone Tools</span><span class="chain-arrow">→</span>
+    <span class="chain-item">🏚️ Shelter</span><span class="chain-arrow">→</span>
+    <span class="chain-item">🌾 Agriculture</span><span class="chain-arrow">→</span>
+    <span class="chain-item">Population cap ×1.25</span>
+  </div>
+  <div class="chain">
+    <span class="chain-item">💬 Language</span><span class="chain-arrow">→</span>
+    <span class="chain-item">📜 Writing</span><span class="chain-arrow">→</span>
+    <span class="chain-item">Knowledge spreads ×3 faster</span>
+  </div>
+  <div class="chain">
+    <span class="chain-item">💬 Language</span><span class="chain-arrow">→</span>
+    <span class="chain-item">👥 Community</span><span class="chain-arrow">→</span>
+    <span class="chain-item">📋 Organisation</span><span class="chain-arrow">→</span>
+    <span class="chain-item">Task roles</span>
+  </div>
+  <div class="chain">
+    <span class="chain-item">🏚️ Shelter</span><span class="chain-arrow">→</span>
+    <span class="chain-item">🐕 Animal Domestication</span><span class="chain-arrow">→</span>
+    <span class="chain-item">🐑 Herding</span>
+  </div>
+  <div class="chain">
+    <span class="chain-item">🔥 Fire</span><span class="chain-arrow">→</span>
+    <span class="chain-item">🏚️ Shelter</span><span class="chain-arrow">→</span>
+    <span class="chain-item">🎭 Art</span><span class="chain-arrow">→</span>
+    <span class="chain-item">🔬 Curiosity Culture</span>
+  </div>
+
+  <h2>Weather System</h2>
+  <table>
+    <thead><tr><th>State</th><th>Energy drain mult</th><th>Sky colour</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>☀️ Clear</td><td>×1.0 (baseline)</td><td>Blue</td><td>Good food regeneration in Summer</td></tr>
+      <tr><td>☁️ Cloudy</td><td>×1.05</td><td>Grey-blue</td><td>Slightly colder; no rain</td></tr>
+      <tr><td>🌧️ Rain</td><td>×1.30</td><td>Dark blue</td><td>Agents lose energy faster; rain particles</td></tr>
+      <tr><td>⛈️ Storm</td><td>×1.70</td><td>Near-black</td><td>Lightning strikes forest tiles every 35–60 game-sec, starting fires that boost fire discovery ×30. Rain is heavy.</td></tr>
+    </tbody>
+  </table>
+
+  <p>Weather transitions every 25–80 game-seconds using season-weighted random draws. Winter skews heavily toward Storms.</p>
+
+  <h3>Temperature (°C)</h3>
+  <table>
+    <thead><tr><th>Season base</th><th>Clear</th><th>Cloudy</th><th>Rain</th><th>Storm</th></tr></thead>
+    <tbody>
+      <tr><td>Spring: 13°C</td><td>+4</td><td>+0</td><td>−4</td><td>−10</td></tr>
+      <tr><td>Summer: 24°C</td><td>+4</td><td>+0</td><td>−4</td><td>−10</td></tr>
+      <tr><td>Autumn: 9°C</td><td>+4</td><td>+0</td><td>−4</td><td>−10</td></tr>
+      <tr><td>Winter: −5°C</td><td>+4</td><td>+0</td><td>−4</td><td>−10</td></tr>
+    </tbody>
+  </table>
+
+  <p>Agents without fire, shelter, clothing, or housing lose energy faster in cold weather. Each protection concept reduces the multiplier:</p>
+  <ul>
+    <li>🔥 Fire: −0.25 from energy drain mult</li>
+    <li>🏚️ Shelter: −0.35</li>
+    <li>🧥 Clothing: −0.20</li>
+    <li>🏠 Housing: −0.20</li>
+    <li>Floor: mult never drops below 1.0 (protections don't make things easier than clear weather)</li>
+  </ul>
+
+  <h2>Wildlife</h2>
+  <p>Animals are animated background entities — they don't affect the simulation directly but make the world feel alive.
+  Future development will allow hunting to interact with animal populations.</p>
+
+  <table>
+    <thead><tr><th>Animal</th><th>Location</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr><td>🐟 Shallow fish (orange)</td><td>Water, near shore</td><td>Fast, small; stays within 3 tiles of spawn (shoreline habitat)</td></tr>
+      <tr><td>🐟 Deep fish (blue)</td><td>Open water</td><td>Slow, large; roams up to 9 tiles from spawn in deep water</td></tr>
+      <tr><td>🐑 Sheep</td><td>Grass</td><td>Gentle grazers; wander within 5 tiles of spawn. White fluffy body + tail.</td></tr>
+      <tr><td>🐷 Pig</td><td>Grass</td><td>Slightly faster and more active; curly tail, snout, ears.</td></tr>
+      <tr><td>🐦 Forest birds</td><td>Forest (flying)</td><td>Dark grey; mobile, fast, wander widely across forest and grass.</td></tr>
+      <tr><td>🐦 Grass birds</td><td>Grass (flying)</td><td>Light grey; similar behaviour to forest birds.</td></tr>
+      <tr><td>🐦 Hummingbird</td><td>Grass/Forest</td><td>One per world; tiny green body, hovers with fast bob animation.</td></tr>
+      <tr><td>🐋 Whale</td><td>Deep water</td><td>One per world; a great whale, sole sovereign of the deep — ancient and unhurried.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="tip"><strong>Secret creatures:</strong> The hummingbird and whale each appear exactly once per world. The hummingbird flies between grass and forest; the whale swims in deep water. Can you spot them?</div>
+
+  <h2>Known Limitations &amp; Future Plans</h2>
+  <ul>
+    <li><strong>No starvation death</strong> — agents with zero hunger lose energy faster but don't die from hunger directly.</li>
+    <li><strong>Wildlife not huntable</strong> — Hunting concept gives a gather bonus from Forest tiles but doesn't remove sheep/pigs from the world yet.</li>
+    <li><strong>No buildings</strong> — concepts like Housing and Shelter don't yet place visible structures on the map.</li>
+    <li><strong>No disease / disasters</strong> — EventSystem is planned but not yet implemented.</li>
+    <li><strong>No save/load</strong> — SaveSystem is planned. Currently each session starts fresh.</li>
+    <li><strong>Concept tree ends at Era 2</strong> — Philosophy, governance, and further eras are planned.</li>
+  </ul>
+
+  <hr>
+  <p style="text-align:center;opacity:.4;font-size:.85rem">World — Emergent Civilisation Simulator · Built with Three.js &amp; vanilla JS</p>
+
+</div>
+</body>
+</html>
