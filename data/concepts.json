@@ -124,10 +124,10 @@
     "prerequisites": ["housing", "language"],
     "discovery_conditions": [
       { "type": "tile_type", "value": "GRASS" },
-      { "type": "population_nearby", "value": 3 }
+      { "type": "population_nearby", "value": 5 }
     ],
-    "discovery_probability": 0.0002,
-    "spread_rate": 0.03,
+    "discovery_probability": 0.00006,
+    "spread_rate": 0.007,
     "effects": {
       "spread_rate_multiplier": 1.12
     }

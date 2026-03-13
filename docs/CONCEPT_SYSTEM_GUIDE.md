@@ -44,7 +44,7 @@ Each concept in `data/concepts.json` has this shape:
 | `adjacent_to` | tile type | At least one orthogonally adjacent tile must be that type |
 | `population_nearby` | number N | At least N other live agents within 6 tiles (used by Language, Temple, Church, etc.) |
 
-**Buildings:** Agents with **Shelter** who are **sleeping** trigger `BuildingRenderer` to place a hut (or tree house on Forest if they know **Tree house**). **Housing** upgrades to house variants. **Temple** / **Church** (with Housing) place larger meshes on Grass when sleeping; priority on a tile is Church > Temple > Tree house > houses > huts. See `src/renderer/BuildingRenderer.js`.
+**Buildings:** Same as above; **Temple** outranks **Church** on a tile. At most four church meshes exist; further church-knowers get house visuals. See `src/renderer/BuildingRenderer.js`.
 
 ---
 

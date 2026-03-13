@@ -2,14 +2,17 @@ import * as THREE from 'three';
 import { TileType, TILE_SIZE } from '../simulation/World.js';
 import { TerrainRenderer } from './TerrainRenderer.js';
 
-/** Priority: higher wins when multiple sleepers share a tile */
+/** Priority: higher wins when multiple sleepers share a tile. Temple above church so shared halls outrank steeples. */
 const RANK = {
-  church: 50,
-  temple: 40,
+  temple: 45,
+  church: 42,
   tree_house: 30,
   housing: 20,
   shelter: 10,
 };
+
+/** Max church meshes on the map (rare landmark, not every hut). */
+const MAX_CHURCHES = 4;
 
 function tileHash(tx, tz) {
   return (tx * 31 + tz * 17) >>> 0;
@@ -25,7 +28,7 @@ export class BuildingRenderer {
 
   /**
    * Scan sleeping agents and place / upgrade buildings on their tile.
-   * Priority: church > temple > tree_house (forest only) > housing variants > hut variants.
+   * Priority: temple > church (capped) > tree_house > housing > hut.
    */
   checkAgents(agents) {
     /** @type {Map<string, { rank: number, kind: string, tileType: string }>} */
@@ -46,12 +49,12 @@ export class BuildingRenderer {
       let rank = 0;
       let kind = '';
 
-      if (agent.knowledge.has('church') && agent.knowledge.has('housing')) {
-        rank = RANK.church;
-        kind = 'church';
-      } else if (agent.knowledge.has('temple') && agent.knowledge.has('housing')) {
+      if (agent.knowledge.has('temple') && agent.knowledge.has('housing')) {
         rank = RANK.temple;
         kind = 'temple';
+      } else if (agent.knowledge.has('church') && agent.knowledge.has('housing')) {
+        rank = RANK.church;
+        kind = 'church';
       } else if (
         tile.type === TileType.FOREST &&
         agent.knowledge.has('tree_house')
@@ -69,6 +72,24 @@ export class BuildingRenderer {
       const prev = best.get(key);
       if (!prev || rank > prev.rank) {
         best.set(key, { rank, kind, tileType: tile.type });
+      }
+    }
+
+    // Cap church visuals: only MAX_CHURCHES tiles keep ⛪; rest fall back to house
+    const churchKeys = [...best.entries()]
+      .filter(([, v]) => v.kind === 'church')
+      .map(([k]) => k)
+      .sort();
+    if (churchKeys.length > MAX_CHURCHES) {
+      for (const key of churchKeys.slice(MAX_CHURCHES)) {
+        const [tx, tz] = key.split(',').map(Number);
+        const h = tileHash(tx, tz);
+        const tileType = best.get(key).tileType;
+        best.set(key, {
+          rank: RANK.housing,
+          kind: `house_${h % 4}`,
+          tileType,
+        });
       }
     }
 

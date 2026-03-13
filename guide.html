@@ -300,7 +300,7 @@
     <div class="card"><div class="card-icon">🏠</div><div class="card-name">Housing</div><div class="card-desc">Requires Shelter. −20% cold penalty, +15% rest recovery. Sleeping agents get varied house meshes (cottage, cabin, longhouse, flat-roof). Unlocks Temple (with Art) and Church (with Language).</div></div>
     <div class="card"><div class="card-icon">🌳</div><div class="card-name">Tree house</div><div class="card-desc">Requires Shelter + Rope. Discovered in Forest. Raised tree-house when sleeping on forest. Small rest and weather bonuses.</div></div>
     <div class="card"><div class="card-icon">🏛️</div><div class="card-name">Temple</div><div class="card-desc">Requires Housing + Art. Discovered on Grass with 2+ other agents within 6 tiles. Temple mesh when sleeping; +10% concept spread.</div></div>
-    <div class="card"><div class="card-icon">⛪</div><div class="card-name">Church</div><div class="card-desc">Requires Housing + Language. Discovered on Grass with 3+ neighbours. Church mesh when sleeping (overrides temple on same tile).</div></div>
+    <div class="card"><div class="card-icon">⛪</div><div class="card-name">Church</div><div class="card-desc">Requires Housing + Language. Harder to discover: Grass + 5+ neighbours nearby; spreads slowly. At most four ⛪ meshes on the map—others show as houses. Temple outranks church if an agent knows both.</div></div>
     <div class="card"><div class="card-icon">⛵</div><div class="card-name">Sailing</div><div class="card-desc">No prerequisites. Discovered adjacent to Water. Unlocks water travel — agents can cross ocean tiles.</div></div>
     <div class="card"><div class="card-icon">🏔️</div><div class="card-name">Mountain Climbing</div><div class="card-desc">Requires Stone Tools. Discovered adjacent to Mountain. Unlocks mountain traversal.</div></div>
     <div class="card"><div class="card-icon">🏺</div><div class="card-name">Pottery</div><div class="card-desc">Requires Fire. Discovered on Stone. +15% hunger from food. Unlocks Preservation.</div></div>
@@ -409,7 +409,7 @@
   <ul>
     <li><strong>No starvation death</strong> — agents with zero hunger lose energy faster but don't die from hunger directly.</li>
     <li><strong>Wildlife not huntable</strong> — Hunting concept gives a gather bonus from Forest tiles but doesn't remove sheep/pigs from the world yet.</li>
-    <li><strong>Buildings</strong> — Sleeping agents with Shelter place huts (two styles); with Housing, stone/cottage/longhouse variants. <strong>Tree house</strong> (Shelter+Rope, on Forest) builds raised platforms. <strong>Temple</strong> (Housing+Art, Grass + 2+ neighbours) and <strong>Church</strong> (Housing+Language, Grass + 3+ neighbours) place larger structures; Church wins if both apply on one tile.</li>
+    <li><strong>Buildings</strong> — Huts / house variants as before. <strong>Temple</strong> (Housing+Art, Grass + 2+ neighbours) and <strong>Church</strong> (Housing+Language, Grass + 5+ neighbours, rare spread)—at most <strong>four</strong> church models world-wide; extra church-knowers sleep in normal houses. Temple ranks above church when both apply.</li>
     <li><strong>No disease / disasters</strong> — EventSystem is planned but not yet implemented.</li>
     <li><strong>No save/load</strong> — SaveSystem is planned. Currently each session starts fresh.</li>
     <li><strong>Concept tree ends at Era 2</strong> — Philosophy, governance, and further eras are planned.</li>
