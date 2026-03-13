@@ -1,6 +1,6 @@
 import { TileType } from './World.js';
 
-const SPEED = 1.0; // tiles per game-second
+const SPEED = 2.05; // tiles per game-second (gallop pace)
 const REACH_DIST = 0.12;
 const WANDER_RADIUS_MIN = 4;
 const WANDER_RADIUS_MAX = 8;
@@ -22,6 +22,8 @@ export class WildHorse {
     this.facingX = 0;
     this.facingZ = 1;
     this._retargetIn = 0.5 + Math.random() * 2;
+    /** Accumulated for gallop animation (renderer reads) */
+    this.gallopPhase = Math.random() * Math.PI * 2;
   }
 
   _pickTarget(world) {
@@ -58,6 +60,9 @@ export class WildHorse {
       this._retargetIn = RETARGET_INTERVAL + Math.random() * 4;
       return;
     }
+
+    // Gallop cycle stays in sync with distance travelled
+    this.gallopPhase += delta * SPEED * 1.15;
 
     const step = SPEED * delta;
     const nx = this.x + (dx / dist) * Math.min(step, dist);
