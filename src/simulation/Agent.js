@@ -109,6 +109,9 @@ export class Agent {
     if (hasShelter) envMult = Math.max(1.0, envMult - 0.35);
     if (this.knowledge.has('clothing')) envMult = Math.max(1.0, envMult - 0.20);
     if (this.knowledge.has('housing')) envMult = Math.max(1.0, envMult - 0.20);
+    if (this.knowledge.has('tree_house')) envMult = Math.max(1.0, envMult - 0.05);
+    if (this.knowledge.has('temple')) envMult = Math.max(1.0, envMult - 0.04);
+    if (this.knowledge.has('church')) envMult = Math.max(1.0, envMult - 0.04);
 
     // Drain needs
     this.needs.hunger = Math.max(0, this.needs.hunger - HUNGER_DRAIN * delta);
@@ -139,6 +142,9 @@ export class Agent {
       if (this.knowledge.has('weaving')) sleepMult *= 1.25;
       if (this.knowledge.has('rope')) sleepMult *= 1.1;
       if (this.knowledge.has('housing')) sleepMult *= 1.15;
+      if (this.knowledge.has('tree_house')) sleepMult *= 1.06;
+      if (this.knowledge.has('temple')) sleepMult *= 1.04;
+      if (this.knowledge.has('church')) sleepMult *= 1.04;
       const taskRestBonus = this.task && Agent.TASKS[this.task]?.restBonus ? Agent.TASKS[this.task].restBonus : 1.0;
       sleepMult *= taskRestBonus;
       this.needs.energy = Math.min(1, this.needs.energy + ENERGY_RECOVER * delta * 1.4 * sleepMult);

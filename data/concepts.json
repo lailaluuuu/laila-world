@@ -82,6 +82,57 @@
     }
   },
   {
+    "id": "tree_house",
+    "name": "Tree House",
+    "era": 2,
+    "icon": "🌳",
+    "description": "Platforms lashed high in the canopy give shelter above the damp ground and predators below.",
+    "prerequisites": ["shelter", "rope"],
+    "discovery_conditions": [
+      { "type": "tile_type", "value": "FOREST" }
+    ],
+    "discovery_probability": 0.00025,
+    "spread_rate": 0.035,
+    "effects": {
+      "rest_efficiency": 1.08,
+      "weather_protection": 0.05
+    }
+  },
+  {
+    "id": "temple",
+    "name": "Temple",
+    "era": 2,
+    "icon": "🏛️",
+    "description": "Raised gathering places for ritual and story anchor the community and the spirit.",
+    "prerequisites": ["housing", "art"],
+    "discovery_conditions": [
+      { "type": "tile_type", "value": "GRASS" },
+      { "type": "population_nearby", "value": 2 }
+    ],
+    "discovery_probability": 0.0002,
+    "spread_rate": 0.03,
+    "effects": {
+      "spread_rate_multiplier": 1.1
+    }
+  },
+  {
+    "id": "church",
+    "name": "Church",
+    "era": 2,
+    "icon": "⛪",
+    "description": "A shared hall and high roof gather many voices in song and counsel.",
+    "prerequisites": ["housing", "language"],
+    "discovery_conditions": [
+      { "type": "tile_type", "value": "GRASS" },
+      { "type": "population_nearby", "value": 3 }
+    ],
+    "discovery_probability": 0.0002,
+    "spread_rate": 0.03,
+    "effects": {
+      "spread_rate_multiplier": 1.12
+    }
+  },
+  {
     "id": "cooking",
     "name": "Cooking",
     "era": 1,

@@ -42,8 +42,9 @@ Each concept in `data/concepts.json` has this shape:
 | `tile_type` | `"GRASS"`, `"FOREST"`, `"STONE"`, `"WATER"`, `"MOUNTAIN"` | Agent must be standing on that tile |
 | `has_concept` | concept id | Agent must already know that concept |
 | `adjacent_to` | tile type | At least one orthogonally adjacent tile must be that type |
+| `population_nearby` | number N | At least N other live agents within 6 tiles (used by Language, Temple, Church, etc.) |
 
-**Note:** The `population_nearby` type appears in `concepts.json` (e.g. Language) but is **not implemented** in `ConceptGraph._conditionsMet`. Concepts using it effectively have no location requirement.
+**Buildings:** Agents with **Shelter** who are **sleeping** trigger `BuildingRenderer` to place a hut (or tree house on Forest if they know **Tree house**). **Housing** upgrades to house variants. **Temple** / **Church** (with Housing) place larger meshes on Grass when sleeping; priority on a tile is Church > Temple > Tree house > houses > huts. See `src/renderer/BuildingRenderer.js`.
 
 ---
 

@@ -285,19 +285,22 @@
     <div class="card"><div class="card-icon">🔥</div><div class="card-name">Fire</div><div class="card-desc">Discovered in Forest. No prerequisites. Boosts lifespan ×15%, reduces cold penalty. Enables Cooking. Lightning strikes near fire tiles boost discovery ×30.</div></div>
     <div class="card"><div class="card-icon">🪨</div><div class="card-name">Stone Tools</div><div class="card-desc">Discovered on Stone. +20% gather yield, −28% tile depletion. Unlocks Shelter, Clothing, Weaving, Fishing, Hunting, Metal Tools, Mountain Climbing.</div></div>
     <div class="card"><div class="card-icon">💬</div><div class="card-name">Language</div><div class="card-desc">Discovered when 3+ agents are nearby. Doubles the spread rate of all other concepts. Prerequisite for Writing, Community, Organisation.</div></div>
-    <div class="card"><div class="card-icon">🏚️</div><div class="card-name">Shelter</div><div class="card-desc">Requires Stone Tools. +50% rest recovery, lifespan ×10%, reduces cold penalty. Unlocks Housing, Cooking, Medicine, Art, Animal Domestication, Agriculture, Community.</div></div>
+    <div class="card"><div class="card-icon">🏚️</div><div class="card-name">Shelter</div><div class="card-desc">Requires Stone Tools. +50% rest recovery, lifespan ×10%, reduces cold penalty. When agents sleep, huts appear on their tile. Unlocks Housing, Tree house (with Rope), Cooking, Medicine, Art, Animal Domestication, Agriculture, Community.</div></div>
     <div class="card"><div class="card-icon">🍖</div><div class="card-name">Cooking</div><div class="card-desc">Requires Fire. ×1.6 hunger from food. Lifespan ×20%. The single biggest quality-of-life upgrade.</div></div>
     <div class="card"><div class="card-icon">🧥</div><div class="card-name">Clothing</div><div class="card-desc">Requires Stone Tools. Discovered in Forest. −20% cold energy penalty. Keeps agents active longer in winter and storms.</div></div>
     <div class="card"><div class="card-icon">🌿</div><div class="card-name">Medicine</div><div class="card-desc">Requires Cooking + Shelter. Lifespan ×25%. The biggest single lifespan extension.</div></div>
     <div class="card"><div class="card-icon">🧵</div><div class="card-name">Weaving</div><div class="card-desc">Requires Stone Tools. +20% rest recovery. Unlocks Rope.</div></div>
-    <div class="card"><div class="card-icon">🪢</div><div class="card-name">Rope</div><div class="card-desc">Requires Stone Tools + Weaving. Additional +10% rest recovery.</div></div>
+    <div class="card"><div class="card-icon">🪢</div><div class="card-name">Rope</div><div class="card-desc">Requires Stone Tools + Weaving. Additional +10% rest recovery. Unlocks Tree house (with Shelter).</div></div>
     <div class="card"><div class="card-icon">🎣</div><div class="card-name">Fishing</div><div class="card-desc">Requires Stone Tools + adjacent Water. +10% gather efficiency.</div></div>
     <div class="card"><div class="card-icon">🏹</div><div class="card-name">Hunting</div><div class="card-desc">Requires Stone Tools. Discovered in Forest. +35% gather efficiency in Forest tiles.</div></div>
   </div>
 
   <h2>Era 2 Concepts</h2>
   <div class="card-grid">
-    <div class="card"><div class="card-icon">🏠</div><div class="card-name">Housing</div><div class="card-desc">Requires Shelter. −20% cold penalty, +15% rest recovery on top of shelter.</div></div>
+    <div class="card"><div class="card-icon">🏠</div><div class="card-name">Housing</div><div class="card-desc">Requires Shelter. −20% cold penalty, +15% rest recovery. Sleeping agents get varied house meshes (cottage, cabin, longhouse, flat-roof). Unlocks Temple (with Art) and Church (with Language).</div></div>
+    <div class="card"><div class="card-icon">🌳</div><div class="card-name">Tree house</div><div class="card-desc">Requires Shelter + Rope. Discovered in Forest. Raised tree-house when sleeping on forest. Small rest and weather bonuses.</div></div>
+    <div class="card"><div class="card-icon">🏛️</div><div class="card-name">Temple</div><div class="card-desc">Requires Housing + Art. Discovered on Grass with 2+ other agents within 6 tiles. Temple mesh when sleeping; +10% concept spread.</div></div>
+    <div class="card"><div class="card-icon">⛪</div><div class="card-name">Church</div><div class="card-desc">Requires Housing + Language. Discovered on Grass with 3+ neighbours. Church mesh when sleeping (overrides temple on same tile).</div></div>
     <div class="card"><div class="card-icon">⛵</div><div class="card-name">Sailing</div><div class="card-desc">No prerequisites. Discovered adjacent to Water. Unlocks water travel — agents can cross ocean tiles.</div></div>
     <div class="card"><div class="card-icon">🏔️</div><div class="card-name">Mountain Climbing</div><div class="card-desc">Requires Stone Tools. Discovered adjacent to Mountain. Unlocks mountain traversal.</div></div>
     <div class="card"><div class="card-icon">🏺</div><div class="card-name">Pottery</div><div class="card-desc">Requires Fire. Discovered on Stone. +15% hunger from food. Unlocks Preservation.</div></div>
@@ -406,7 +409,7 @@
   <ul>
     <li><strong>No starvation death</strong> — agents with zero hunger lose energy faster but don't die from hunger directly.</li>
     <li><strong>Wildlife not huntable</strong> — Hunting concept gives a gather bonus from Forest tiles but doesn't remove sheep/pigs from the world yet.</li>
-    <li><strong>No buildings</strong> — concepts like Housing and Shelter don't yet place visible structures on the map.</li>
+    <li><strong>Buildings</strong> — Sleeping agents with Shelter place huts (two styles); with Housing, stone/cottage/longhouse variants. <strong>Tree house</strong> (Shelter+Rope, on Forest) builds raised platforms. <strong>Temple</strong> (Housing+Art, Grass + 2+ neighbours) and <strong>Church</strong> (Housing+Language, Grass + 3+ neighbours) place larger structures; Church wins if both apply on one tile.</li>
     <li><strong>No disease / disasters</strong> — EventSystem is planned but not yet implemented.</li>
     <li><strong>No save/load</strong> — SaveSystem is planned. Currently each session starts fresh.</li>
     <li><strong>Concept tree ends at Era 2</strong> — Philosophy, governance, and further eras are planned.</li>
