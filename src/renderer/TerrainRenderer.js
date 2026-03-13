@@ -647,11 +647,39 @@ export class TerrainRenderer {
         scale: [2.2, 0.65, 0.80],
         rotY: wSeed, seed: wSeed,
       }];
+      // Blowhole spray: pooled points, burst on random timer
+      const spoutCount = 64;
+      const spoutPos = new Float32Array(spoutCount * 3);
+      const spoutGeom = new THREE.BufferGeometry();
+      spoutGeom.setAttribute('position', new THREE.BufferAttribute(spoutPos, 3));
+      const spoutMat = new THREE.PointsMaterial({
+        color: 0xb8e8ff,
+        size: 0.07,
+        transparent: true,
+        opacity: 0.9,
+        depthWrite: false,
+        sizeAttenuation: true,
+      });
+      const spoutPoints = new THREE.Points(spoutGeom, spoutMat);
+      this.scene.add(spoutPoints);
+      this._meshes.push(spoutPoints);
+      const spoutParticles = Array.from({ length: spoutCount }, () => ({
+        life: 0,
+        maxLife: 1,
+        x: 0,
+        y: 0,
+        z: 0,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+      }));
+
       const whaleConfig = {
         label: 'Whale', icon: '🐋',
         description: 'A great whale, sole sovereign of the deep — ancient and unhurried.',
         driftRadius: 0.05, driftSpeed: 0.08, bobAmount: 0.04, bobSpeed: 0.6,
         mobile: true, moveSpeed: 0.08, tileTypes: [TileType.DEEP_WATER], wanderRadius: 12,
+        whaleSpout: { points: spoutPoints, particles: spoutParticles },
       };
       whaleMesh.castShadow = true;
       addAnimated(whaleMesh, whaleInstances, whaleConfig, [
@@ -721,6 +749,58 @@ export class TerrainRenderer {
         if (config.sparkle && i === 0) {
           inst._sparkleX = px; inst._sparkleY = py; inst._sparkleZ = pz;
         }
+
+        // Whale blowhole spray (random spouts)
+        if (config.whaleSpout && i === 0) {
+          const spout = config.whaleSpout;
+          const ry0 = inst.rotY;
+          const forward = 0.32;
+          const bhX = px + Math.sin(ry0) * forward;
+          const bhY = py + inst.scale[1] * 0.16 + 0.06;
+          const bhZ = pz + Math.cos(ry0) * forward;
+          if (inst._nextSpoutT === undefined) {
+            inst._nextSpoutT = t + 1.5 + Math.random() * 6;
+          }
+          if (t >= inst._nextSpoutT) {
+            inst._nextSpoutT = t + 2 + Math.random() * 9;
+            const burst = 14 + Math.floor(Math.random() * 22);
+            let spawned = 0;
+            for (const p of spout.particles) {
+              if (spawned >= burst) break;
+              if (p.life <= 0) {
+                p.x = bhX + (Math.random() - 0.5) * 0.04;
+                p.y = bhY;
+                p.z = bhZ + (Math.random() - 0.5) * 0.04;
+                p.vx = (Math.random() - 0.5) * 0.2;
+                p.vy = 0.42 + Math.random() * 0.55;
+                p.vz = (Math.random() - 0.5) * 0.2;
+                p.maxLife = 0.4 + Math.random() * 0.55;
+                p.life = p.maxLife;
+                spawned++;
+              }
+            }
+          }
+          const arr = spout.points.geometry.attributes.position.array;
+          for (let pi = 0; pi < spout.particles.length; pi++) {
+            const p = spout.particles[pi];
+            if (p.life > 0) {
+              p.life -= realDelta;
+              p.x += p.vx * realDelta;
+              p.y += p.vy * realDelta;
+              p.z += p.vz * realDelta;
+              p.vy -= 0.85 * realDelta;
+              arr[pi * 3] = p.x;
+              arr[pi * 3 + 1] = p.y;
+              arr[pi * 3 + 2] = p.z;
+            } else {
+              arr[pi * 3] = 0;
+              arr[pi * 3 + 1] = -800;
+              arr[pi * 3 + 2] = 0;
+            }
+          }
+          spout.points.geometry.attributes.position.needsUpdate = true;
+        }
+
         const ry = inst.rotY;
 
         dummy.position.set(px, py, pz);
