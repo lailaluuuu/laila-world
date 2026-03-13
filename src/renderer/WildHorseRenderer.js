@@ -206,7 +206,9 @@ export class WildHorseRenderer {
       const fz = horseSim.facingZ;
       const len = Math.hypot(fx, fz) || 1;
       root.position.set(wx, surfY + 0.02, wz);
+      // lookAt aligns local +Z toward target; our mesh has head on −Z, tail on +Z → without π they walk tail-first
       root.lookAt(wx + fx / len, surfY + 0.35, wz + fz / len);
+      root.rotateY(Math.PI);
 
       const phase = horseSim.gallopPhase;
       const gait = horseSim.gait;
