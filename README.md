@@ -5,7 +5,7 @@ A passive emergent-civilisation simulator. Watch primitive agents discover fire,
 ## Running the Game
 
 1. Open a terminal in the project directory
-2. Run: `python -m http.server 8080`
+2. Run: `python -m http.server 8080` (Python 3)
 3. Open http://localhost:8080 in a modern browser
 
 See [guide.html](guide.html) for the full game guide.

@@ -19,6 +19,7 @@ export class World {
     this.height = WORLD_HEIGHT;
     this.seed = seed;
     this.tiles = this._generate();
+    this.glacierData = this._initGlaciers();
   }
 
   // ── Procedural generation ─────────────────────────────────────────────
@@ -107,6 +108,36 @@ export class World {
     }
 
     return tiles;
+  }
+
+  // ── Glaciers ──────────────────────────────────────────────────────────
+
+  _initGlaciers() {
+    const data = new Map();
+    for (let z = 0; z < this.height; z++) {
+      for (let x = 0; x < this.width; x++) {
+        if (this.tiles[z][x].type !== TileType.STONE) continue;
+        // Glacier if any 8-directional neighbor is MOUNTAIN (cold high-elevation zone)
+        const nearMountain = [-1, 0, 1].some(dz =>
+          [-1, 0, 1].some(dx => {
+            if (dx === 0 && dz === 0) return false;
+            const nx = x + dx, nz = z + dz;
+            if (nx < 0 || nx >= this.width || nz < 0 || nz >= this.height) return false;
+            return this.tiles[nz][nx].type === TileType.MOUNTAIN;
+          })
+        );
+        if (nearMountain) data.set(`${x},${z}`, { x, z, melt: 0 });
+      }
+    }
+    return data;
+  }
+
+  /** Update glacier melt state. Positive temperature melts, negative refreezes. */
+  updateGlaciers(delta, temperature) {
+    const rate = (temperature / 25) * 0.00028;
+    for (const g of this.glacierData.values()) {
+      g.melt = Math.max(0, Math.min(1, g.melt + rate * delta));
+    }
   }
 
   // ── Queries ───────────────────────────────────────────────────────────

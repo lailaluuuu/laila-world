@@ -64,6 +64,7 @@ async function init() {
   world = new World();
   world.naturalFires = new Map();
   let lightningCooldown = 0;
+  let glacierNotifyState = 'frozen'; // 'frozen' | 'melting' | 'melted'
   conceptGraph = new ConceptGraph(conceptsData);
   const agents = world.getSpawnPoints(AGENT_COUNT).map(p => new Agent(p.x, p.z));
 
@@ -183,6 +184,7 @@ async function init() {
     birthGameTimes.length = 0;
     weather.current = 'CLEAR';
     weather._timer  = 0;
+    glacierNotifyState = 'frozen';
     gameOver = false;
     if (gameOverAutoResetId) {
       clearTimeout(gameOverAutoResetId);
@@ -493,8 +495,10 @@ async function init() {
       if (weather.current !== prevWeather) {
         if (weather.current === 'STORM')  showNotification('A storm rolls in...', 'env');
         if (weather.current === 'RAIN')   showNotification('Rain begins to fall.', 'env');
-        if (weather.current === 'CLEAR' && (prevWeather === 'STORM' || prevWeather === 'RAIN'))
+        if (weather.current === 'CLEAR' && (prevWeather === 'STORM' || prevWeather === 'RAIN')) {
           showNotification('The skies clear.', 'env');
+          wr.triggerRainbow();
+        }
       }
 
       // Lightning strikes during storms — can set forest on fire
@@ -524,6 +528,19 @@ async function init() {
 
       // Regenerate tile food resources (season-aware)
       world.updateResources(delta, time.season);
+
+      // Melt/refreeze glaciers based on temperature
+      world.updateGlaciers(delta, weather.temperature);
+      if (world.glacierData.size > 0) {
+        const avgMelt = [...world.glacierData.values()].reduce((s, g) => s + g.melt, 0) / world.glacierData.size;
+        if (avgMelt > 0.35 && glacierNotifyState === 'frozen') {
+          glacierNotifyState = 'melting';
+          showNotification('The mountain glaciers are beginning to melt.', 'env');
+        } else if (avgMelt < 0.08 && glacierNotifyState === 'melting') {
+          glacierNotifyState = 'frozen';
+          showNotification('Glaciers have refrozen in the cold.', 'env');
+        }
+      }
 
       // Handle agent-lit campfires
       if (world.campfireEvents?.length) {
@@ -604,6 +621,7 @@ async function init() {
     // Rendering always runs (for smooth camera)
     wr.setTimeOfDay(time.timeOfDay);
     wr.setWeather(weather.meta);
+    terrainRenderer.updateGlaciers(world.glacierData);
     terrainRenderer.updateAnimals(delta > 0 ? delta : 0, {
       gameTime: time.gameTime,
       dayLength: time.dayLength,

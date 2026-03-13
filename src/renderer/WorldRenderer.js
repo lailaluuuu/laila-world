@@ -76,6 +76,9 @@ export class WorldRenderer {
     // ── Rain particles ─────────────────────────────────────────────────
     this._buildRain();
 
+    // ── Rainbow ────────────────────────────────────────────────────────
+    this._buildRainbow();
+
     // ── Resize ─────────────────────────────────────────────────────────
     window.addEventListener('resize', () => this._handleResize());
   }
@@ -102,8 +105,69 @@ export class WorldRenderer {
     this.scene.add(this._rainParticles);
   }
 
+  _buildRainbow() {
+    // Seven concentric half-torus arcs (XY-plane semicircle) facing the camera.
+    // Positioned behind the world so it sits on the far horizon.
+    const COLORS  = [0xff2200, 0xff7700, 0xffee00, 0x22cc22, 0x1166ff, 0x4400bb, 0x8800dd];
+    const RADII   = [43, 45, 47, 49, 51, 53, 55];
+    const TUBE    = 1.25;
+    this._rainbowMeshes = [];
+    const group = new THREE.Group();
+    group.position.set(CENTER_X, 0, CENTER_Z - 62);
+    COLORS.forEach((col, idx) => {
+      const geom = new THREE.TorusGeometry(RADII[idx], TUBE, 8, 72, Math.PI);
+      const mat  = new THREE.MeshBasicMaterial({
+        color: col, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(geom, mat);
+      // Torus sweeps in XY plane already — this gives us a vertical arch ✓
+      group.add(mesh);
+      this._rainbowMeshes.push(mat);
+    });
+    group.visible = false;
+    this.scene.add(group);
+    this._rainbowGroup = group;
+    this._rainbowState = { phase: 'hidden', opacity: 0, timer: 0, duration: 0 };
+  }
+
+  /** Trigger a rainbow with a given probability (0–1). Call after rain ends. */
+  triggerRainbow(chance = 0.65) {
+    if (Math.random() > chance) return;
+    const s = this._rainbowState;
+    s.phase    = 'fadein';
+    s.opacity  = 0;
+    s.timer    = 0;
+    s.duration = 40 + Math.random() * 35; // visible for 40–75 real seconds
+    this._rainbowGroup.visible = true;
+  }
+
+  _updateRainbow(realDelta) {
+    const s = this._rainbowState;
+    if (s.phase === 'hidden') return;
+
+    if (s.phase === 'fadein') {
+      s.opacity = Math.min(1, s.opacity + realDelta / 4);
+      if (s.opacity >= 1) s.phase = 'visible';
+    } else if (s.phase === 'visible') {
+      s.timer += realDelta;
+      if (s.timer >= s.duration) s.phase = 'fadeout';
+    } else if (s.phase === 'fadeout') {
+      s.opacity = Math.max(0, s.opacity - realDelta / 7);
+      if (s.opacity <= 0) {
+        s.phase = 'hidden';
+        this._rainbowGroup.visible = false;
+      }
+    }
+    // Each band peaks at slightly different opacity for a natural look
+    this._rainbowMeshes.forEach((mat, i) => {
+      const bandMult = 0.55 + 0.45 * Math.sin((i / 6) * Math.PI); // middle bands brighter
+      mat.opacity = s.opacity * 0.72 * bandMult;
+    });
+  }
+
   /** Called each visual frame with real (wall-clock) delta */
   updateRain(realDelta, isRaining, isStorm) {
+    this._updateRainbow(realDelta);
     if (!isRaining) {
       this._rainParticles.visible = false;
       return;

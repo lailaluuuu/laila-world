@@ -125,6 +125,7 @@ export class TerrainRenderer {
 
     this._buildVegetation(buckets);
     this._buildAnimals(buckets);
+    this._buildGlaciers(buckets[TileType.STONE]);
   }
 
   // Deterministic per-tile pseudo-random (no Math.random — stable across redraws)
@@ -142,6 +143,10 @@ export class TerrainRenderer {
       const bushMat  = new THREE.MeshLambertMaterial({ color: 0x4ade80 });
       const bushMesh = new THREE.InstancedMesh(bushGeom, bushMat, grassFood.length);
       const surfY = TerrainRenderer.surfaceY(TileType.GRASS);
+
+      // Split bushes: ~35% get blueberries, ~25% get strawberries, rest plain
+      const berryTiles      = grassFood.filter(t => this._rng(t.x, t.z, 41) < 0.35);
+      const strawberryTiles = grassFood.filter(t => this._rng(t.x, t.z, 41) >= 0.35 && this._rng(t.x, t.z, 41) < 0.60);
 
       grassFood.forEach((tile, i) => {
         const ox = (this._rng(tile.x, tile.z, 1) - 0.5) * 0.9;
@@ -167,6 +172,54 @@ export class TerrainRenderer {
       this._meshes.push(bushMesh);
       this._bushMesh = bushMesh;
       this._grassFoodTiles = grassFood;
+
+      // ── Blueberries: 3 tiny dark-blue/purple spheres per berry bush ───────
+      if (berryTiles.length > 0) {
+        const berryGeom = new THREE.SphereGeometry(0.048, 5, 4);
+        const berryMat  = new THREE.MeshLambertMaterial({ color: 0x4b1fa8 });
+        // Spawn 3 clusters per tile using separate offsets
+        for (let ci = 0; ci < 3; ci++) {
+          const bMesh = new THREE.InstancedMesh(berryGeom, berryMat, berryTiles.length);
+          berryTiles.forEach((tile, i) => {
+            const ox = (this._rng(tile.x, tile.z, 1) - 0.5) * 0.9;
+            const oz = (this._rng(tile.x, tile.z, 2) - 0.5) * 0.9;
+            const bx = tile.x * TILE_SIZE + TILE_SIZE / 2 + ox + (this._rng(tile.x + ci, tile.z, 51) - 0.5) * 0.28;
+            const bz = tile.z * TILE_SIZE + TILE_SIZE / 2 + oz + (this._rng(tile.x, tile.z + ci, 52) - 0.5) * 0.28;
+            dummy.position.set(bx, surfY + 0.28 + this._rng(tile.x, tile.z + ci, 53) * 0.06, bz);
+            dummy.scale.set(1, 1, 1);
+            dummy.rotation.set(0, 0, 0);
+            dummy.updateMatrix();
+            bMesh.setMatrixAt(i, dummy.matrix);
+          });
+          bMesh.instanceMatrix.needsUpdate = true;
+          this.scene.add(bMesh);
+          this._meshes.push(bMesh);
+        }
+      }
+
+      // ── Strawberries: 3 tiny red teardrops per strawberry bush ─────────────
+      if (strawberryTiles.length > 0) {
+        const strawGeom = new THREE.ConeGeometry(0.042, 0.085, 5);
+        const strawMat  = new THREE.MeshLambertMaterial({ color: 0xee1c2e });
+        for (let ci = 0; ci < 3; ci++) {
+          const sMesh = new THREE.InstancedMesh(strawGeom, strawMat, strawberryTiles.length);
+          strawberryTiles.forEach((tile, i) => {
+            const ox = (this._rng(tile.x, tile.z, 1) - 0.5) * 0.9;
+            const oz = (this._rng(tile.x, tile.z, 2) - 0.5) * 0.9;
+            const sx = tile.x * TILE_SIZE + TILE_SIZE / 2 + ox + (this._rng(tile.x + ci, tile.z, 61) - 0.5) * 0.26;
+            const sz = tile.z * TILE_SIZE + TILE_SIZE / 2 + oz + (this._rng(tile.x, tile.z + ci, 62) - 0.5) * 0.26;
+            dummy.position.set(sx, surfY + 0.27 + this._rng(tile.x, tile.z + ci, 63) * 0.05, sz);
+            // Tip points downward (cone tip = -y), rotate 180° so tip hangs down
+            dummy.rotation.set(Math.PI, this._rng(tile.x + ci, tile.z, 64) * Math.PI * 2, 0);
+            dummy.scale.set(1, 1, 1);
+            dummy.updateMatrix();
+            sMesh.setMatrixAt(i, dummy.matrix);
+          });
+          sMesh.instanceMatrix.needsUpdate = true;
+          this.scene.add(sMesh);
+          this._meshes.push(sMesh);
+        }
+      }
     }
 
     // ── Trees on FOREST tiles ─────────────────────────────────────────────
@@ -183,6 +236,8 @@ export class TerrainRenderer {
       const darkFirGeom     = new THREE.ConeGeometry(0.24, 1.08, 7);
       const roundGeom       = new THREE.SphereGeometry(0.36, 7, 5);
       const cherryGeom      = new THREE.SphereGeometry(0.42, 8, 5);
+      const cherryDeepGeom  = new THREE.SphereGeometry(0.46, 9, 6);
+      const cherryWispGeom  = new THREE.SphereGeometry(0.38, 8, 5);
       const birchGeom       = new THREE.SphereGeometry(0.22, 6, 5);
 
       // ── Helper: create + register one tree variant ──────────────────────
@@ -221,17 +276,19 @@ export class TerrainRenderer {
       };
 
       // ── Assign each tile a tree type via deterministic rng ───────────────
-      const grp = { pine: [], oak: [], cherry: [], autOrange: [], autRed: [],
-                    autGold: [], darkFir: [], birch: [] };
+      const grp = { pine: [], oak: [], cherry: [], cherryDeep: [], cherryWhite: [],
+                    autOrange: [], autRed: [], autGold: [], darkFir: [], birch: [] };
       forestTrees.forEach(tile => {
         const r = this._rng(tile.x, tile.z, 99);
-        if      (r < 0.22) grp.pine.push(tile);
-        else if (r < 0.38) grp.oak.push(tile);
-        else if (r < 0.53) grp.cherry.push(tile);
-        else if (r < 0.63) grp.autOrange.push(tile);
-        else if (r < 0.71) grp.autRed.push(tile);
-        else if (r < 0.78) grp.autGold.push(tile);
-        else if (r < 0.90) grp.darkFir.push(tile);
+        if      (r < 0.18) grp.pine.push(tile);
+        else if (r < 0.30) grp.oak.push(tile);
+        else if (r < 0.42) grp.cherry.push(tile);
+        else if (r < 0.52) grp.cherryDeep.push(tile);
+        else if (r < 0.60) grp.cherryWhite.push(tile);
+        else if (r < 0.68) grp.autOrange.push(tile);
+        else if (r < 0.75) grp.autRed.push(tile);
+        else if (r < 0.81) grp.autGold.push(tile);
+        else if (r < 0.92) grp.darkFir.push(tile);
         else               grp.birch.push(tile);
       });
 
@@ -239,9 +296,15 @@ export class TerrainRenderer {
       addTreeVariant(grp.pine,      normalTrunkGeom, 0x78350f, pineGeom,    0x166534, 0.72);
       // Oak — round bushy canopy
       addTreeVariant(grp.oak,       normalTrunkGeom, 0x6b3a1f, roundGeom,   0x2d7530, 0.80);
-      // Cherry blossom — wide flattened pink dome, dark reddish trunk
-      addTreeVariant(grp.cherry,    cherryTrunkGeom, 0x5c2810, cherryGeom,  0xffacc5, 0.78,
+      // Cherry blossom — classic soft pink, wide flattened dome
+      addTreeVariant(grp.cherry,      cherryTrunkGeom, 0x5c2810, cherryGeom,     0xffacc5, 0.78,
         { scaleMin: 0.80, scaleMax: 1.10, fsx: 1.22, fsy: 0.78, fsz: 1.22 });
+      // Cherry blossom deep — vivid hot-magenta, larger fuller canopy
+      addTreeVariant(grp.cherryDeep,  cherryTrunkGeom, 0x4a1a08, cherryDeepGeom, 0xff4fa0, 0.80,
+        { scaleMin: 0.85, scaleMax: 1.18, fsx: 1.28, fsy: 0.82, fsz: 1.28 });
+      // Cherry blossom white — nearly-white blush, delicate wispy crown
+      addTreeVariant(grp.cherryWhite, cherryTrunkGeom, 0x6b3828, cherryWispGeom, 0xffe8f2, 0.76,
+        { scaleMin: 0.75, scaleMax: 1.08, fsx: 1.15, fsy: 0.72, fsz: 1.15 });
       // Autumn orange
       addTreeVariant(grp.autOrange, normalTrunkGeom, 0x6b3a1f, roundGeom,   0xe07018, 0.80);
       // Autumn red
@@ -327,6 +390,84 @@ export class TerrainRenderer {
       shellMesh.instanceMatrix.needsUpdate  = true;
       this.scene.add(pebbleMesh, shellMesh);
       this._meshes.push(pebbleMesh, shellMesh);
+    }
+
+    // ── Palm trees & coconuts on BEACH tiles ─────────────────────────────
+    const palmTiles = (buckets[TileType.BEACH] ?? []).filter(t => this._rng(t.x, t.z, 85) < 0.28);
+    if (palmTiles.length > 0) {
+      const surfY         = TerrainRenderer.surfaceY(TileType.BEACH);
+      const palmTrunkGeom = new THREE.CylinderGeometry(0.045, 0.075, 0.88, 7);
+      const palmCrownGeom = new THREE.SphereGeometry(0.28, 8, 5);
+      const coconutGeom   = new THREE.SphereGeometry(0.065, 5, 4);
+      const palmTrunkMat  = new THREE.MeshLambertMaterial({ color: 0x9b8060 });
+      const palmCrownMat  = new THREE.MeshLambertMaterial({ color: 0x22c55e });
+      const coconutMat    = new THREE.MeshLambertMaterial({ color: 0x3a2618 });
+
+      const palmTrunkMesh = new THREE.InstancedMesh(palmTrunkGeom, palmTrunkMat, palmTiles.length);
+      const palmCrownMesh = new THREE.InstancedMesh(palmCrownGeom, palmCrownMat, palmTiles.length);
+      const maxCoconuts   = 3;
+      const coconutMesh   = new THREE.InstancedMesh(coconutGeom, coconutMat, palmTiles.length * maxCoconuts);
+      let ci = 0;
+
+      palmTiles.forEach((tile, i) => {
+        const ox      = (this._rng(tile.x, tile.z, 86) - 0.5) * 0.8;
+        const oz      = (this._rng(tile.x, tile.z, 87) - 0.5) * 0.8;
+        const cx      = tile.x * TILE_SIZE + TILE_SIZE / 2 + ox;
+        const cz      = tile.z * TILE_SIZE + TILE_SIZE / 2 + oz;
+        const sc      = 0.82 + this._rng(tile.x, tile.z, 88) * 0.42;
+        const ry      = this._rng(tile.x, tile.z, 89) * Math.PI * 2;
+        const lean    = 0.08 + this._rng(tile.x, tile.z, 92) * 0.13;
+        const trunkH  = 0.88 * sc;
+        // Top of trunk shifts slightly in the lean direction
+        const leanX   = Math.sin(ry) * lean * trunkH * 0.5;
+        const leanZ   = Math.cos(ry) * lean * trunkH * 0.5;
+        const topX    = cx + leanX;
+        const topZ    = cz + leanZ;
+        const topY    = surfY + trunkH;
+
+        // Trunk
+        dummy.position.set(cx + leanX * 0.5, surfY + trunkH * 0.5, cz + leanZ * 0.5);
+        dummy.rotation.set(lean, ry, 0);
+        dummy.scale.set(sc, sc, sc);
+        dummy.updateMatrix();
+        palmTrunkMesh.setMatrixAt(i, dummy.matrix);
+
+        // Crown — wide flat frond burst
+        dummy.position.set(topX, topY + 0.11 * sc, topZ);
+        dummy.rotation.set(0, ry, 0);
+        dummy.scale.set(sc * 1.9, sc * 0.26, sc * 1.9);
+        dummy.updateMatrix();
+        palmCrownMesh.setMatrixAt(i, dummy.matrix);
+
+        // Coconuts — 2 or 3 clustered just below the crown
+        const numCoconuts = 2 + (this._rng(tile.x, tile.z, 93) < 0.5 ? 1 : 0);
+        for (let k = 0; k < maxCoconuts; k++) {
+          if (k < numCoconuts) {
+            const angle = (k / numCoconuts) * Math.PI * 2 + ry + 0.4;
+            const r     = 0.09 * sc;
+            dummy.position.set(topX + Math.cos(angle) * r, topY - 0.03 * sc, topZ + Math.sin(angle) * r);
+            dummy.rotation.set(0, angle, 0);
+            dummy.scale.setScalar(sc * 0.88);
+            dummy.updateMatrix();
+          } else {
+            // hide unused instances
+            dummy.scale.setScalar(0);
+            dummy.updateMatrix();
+          }
+          coconutMesh.setMatrixAt(ci++, dummy.matrix);
+        }
+      });
+
+      palmTrunkMesh.castShadow = true;
+      palmCrownMesh.castShadow = true;
+      coconutMesh.castShadow   = true;
+      palmTrunkMesh.receiveShadow = true;
+      palmCrownMesh.receiveShadow = true;
+      palmTrunkMesh.instanceMatrix.needsUpdate = true;
+      palmCrownMesh.instanceMatrix.needsUpdate = true;
+      coconutMesh.instanceMatrix.needsUpdate   = true;
+      this.scene.add(palmTrunkMesh, palmCrownMesh, coconutMesh);
+      this._meshes.push(palmTrunkMesh, palmCrownMesh, coconutMesh);
     }
 
     // ── Cacti on DESERT tiles ──────────────────────────────────────────────
@@ -811,37 +952,21 @@ export class TerrainRenderer {
       const wIdx = Math.floor(whaleDeepTiles.length * 0.5) % whaleDeepTiles.length;
       const wTile = whaleDeepTiles[wIdx];
 
-      // Realistic whale: elongated torpedo body, subtle nose taper, long pectoral flippers, swept dorsal
-      const whaleBodyGeom = new THREE.SphereGeometry(0.19, 12, 9);
+      // Long torpedo body
+      const whaleBodyGeom = new THREE.SphereGeometry(0.24, 14, 10);
       const whaleBodyMat = new THREE.MeshLambertMaterial({ color: 0x2a3d5a });
       const whaleMesh = new THREE.InstancedMesh(whaleBodyGeom, whaleBodyMat, 1);
 
       // Belly / ventral pale patch
-      const bellyGeom = new THREE.SphereGeometry(0.165, 8, 6);
-      const bellyMat = new THREE.MeshLambertMaterial({ color: 0x9ab8cc });
+      const bellyGeom = new THREE.SphereGeometry(0.22, 10, 7);
+      const bellyMat = new THREE.MeshLambertMaterial({ color: 0x8ab4cc });
       const bellyMesh = new THREE.InstancedMesh(bellyGeom, bellyMat, 1);
 
-      // Nose taper — small, overlapping front of body to create a tapered snout
-      const snoutGeom = new THREE.SphereGeometry(0.11, 8, 7);
-      const snoutMat = new THREE.MeshLambertMaterial({ color: 0x243650 });
-      const snoutMesh = new THREE.InstancedMesh(snoutGeom, snoutMat, 1);
-
-      // Dorsal fin — thin cone swept back
-      const dorsalGeom = new THREE.ConeGeometry(0.055, 0.22, 5);
-      const dorsalMat = new THREE.MeshLambertMaterial({ color: 0x1e2e42 });
-      const dorsalMesh = new THREE.InstancedMesh(dorsalGeom, dorsalMat, 1);
-
-      // Flukes
-      const flukeGeom = new THREE.SphereGeometry(0.12, 8, 6);
-      const flukeMat = new THREE.MeshLambertMaterial({ color: 0x1e2e42 });
+      // Tail flukes — two big flat horizontal lobes
+      const flukeGeom = new THREE.SphereGeometry(0.18, 8, 6);
+      const flukeMat = new THREE.MeshLambertMaterial({ color: 0x1a2838 });
       const flukeL = new THREE.InstancedMesh(flukeGeom, flukeMat, 1);
       const flukeR = new THREE.InstancedMesh(flukeGeom, flukeMat, 1);
-
-      // Long pectoral flippers
-      const pecGeom = new THREE.SphereGeometry(0.08, 6, 5);
-      const pecMat = new THREE.MeshLambertMaterial({ color: 0x1e2e42 });
-      const pecL = new THREE.InstancedMesh(pecGeom, pecMat, 1);
-      const pecR = new THREE.InstancedMesh(pecGeom, pecMat, 1);
 
       const ox = (this._rng(wTile.x, wTile.z, 91) - 0.5) * 0.5;
       const oz = (this._rng(wTile.x, wTile.z, 92) - 0.5) * 0.5;
@@ -852,8 +977,8 @@ export class TerrainRenderer {
       const whaleInstances = [{
         x: wx, z: wz, targetX: wx, targetZ: wz,
         homeX: wTile.x, homeZ: wTile.z,
-        baseY: surfY(TileType.DEEP_WATER) + 0.02,
-        scale: [3.4, 0.92, 1.1],
+        baseY: surfY(TileType.DEEP_WATER) + 0.06,
+        scale: [1.6, 1.1, 3.2],
         rotY: wSeed, seed: wSeed,
       }];
       // Blowhole: once per in-game day at noon (game clock); tall + readable on water
@@ -897,26 +1022,18 @@ export class TerrainRenderer {
       const whaleConfig = {
         label: 'Whale', icon: '🐋',
         description: 'A great whale, sole sovereign of the deep — ancient and unhurried.',
-        driftRadius: 0.05, driftSpeed: 0.08, bobAmount: 0.04, bobSpeed: 0.6,
+        driftRadius: 0.05, driftSpeed: 0.08, bobAmount: 0.09, bobSpeed: 0.5,
         mobile: true, moveSpeed: 0.08, tileTypes: [TileType.DEEP_WATER], wanderRadius: 12,
         whaleSpout: { mist: mistLayer, spray: sprayLayer },
       };
       whaleMesh.castShadow = true;
       bellyMesh.castShadow = true;
-      snoutMesh.castShadow = true;
-      dorsalMesh.castShadow = true;
       flukeL.castShadow = true;
       flukeR.castShadow = true;
-      pecL.castShadow = true;
-      pecR.castShadow = true;
       addAnimated(whaleMesh, whaleInstances, whaleConfig, [
-        { mesh: bellyMesh,  offset: 0,     whaleBelly: true },
-        { mesh: snoutMesh,  offset: 0.48,  whaleHead: true },
-        { mesh: dorsalMesh, offset: 0.05,  dorsal: true },
-        { mesh: flukeL,     offset: -0.55, flukeL: true },
-        { mesh: flukeR,     offset: -0.55, flukeR: true },
-        { mesh: pecL,       whalePecL: true },
-        { mesh: pecR,       whalePecR: true },
+        { mesh: bellyMesh, offset: 0,     whaleBelly: true },
+        { mesh: flukeL,    offset: -0.85, flukeL: true },
+        { mesh: flukeR,    offset: -0.85, flukeR: true },
       ]);
     }
 
@@ -1222,48 +1339,55 @@ export class TerrainRenderer {
             part.mesh.setMatrixAt(i, dummy.matrix);
           } else if (part.whaleBelly) {
             // Pale ventral patch — pressed flat along the underside
-            dummy.position.set(px, py - inst.scale[1] * 0.06, pz);
-            dummy.scale.set(inst.scale[0] * 0.72, 0.28, inst.scale[2] * 0.82);
+            dummy.position.set(px, py - inst.scale[1] * 0.10, pz);
+            dummy.scale.set(inst.scale[0] * 0.80, 0.22, inst.scale[2] * 0.88);
             dummy.rotation.order = 'YXZ';
             dummy.rotation.y = ry;
             dummy.rotation.x = 0;
             dummy.updateMatrix();
             part.mesh.setMatrixAt(i, dummy.matrix);
           } else if (part.whaleHead) {
-            // Nose taper — small sphere overlapping the front tip of the body
+            // Big blunt rounded head at the front — characteristic whale shape
             const hx = px + Math.sin(ry) * part.offset;
             const hz = pz + Math.cos(ry) * part.offset;
-            dummy.position.set(hx, py - inst.scale[1] * 0.02, hz);
-            dummy.scale.set(0.72, 0.78, 0.88);
+            dummy.position.set(hx, py, hz);
+            dummy.scale.set(1.05, 0.95, 1.15);
             dummy.rotation.order = 'YXZ';
             dummy.rotation.y = ry;
             dummy.rotation.x = 0;
             dummy.updateMatrix();
             part.mesh.setMatrixAt(i, dummy.matrix);
           } else if (part.dorsal) {
-            // Small swept dorsal fin near mid-back
+            // Tall swept-back dorsal fin on mid-back
             const mx = px + Math.sin(ry) * part.offset;
             const mz = pz + Math.cos(ry) * part.offset;
-            dummy.position.set(mx, py + inst.scale[1] * 0.14 + 0.04, mz);
-            dummy.scale.set(0.9, 1.0, 0.35);
+            dummy.position.set(mx, py + inst.scale[1] * 0.16 + 0.06, mz);
+            dummy.scale.set(0.28, 1.0, 0.12);
             dummy.rotation.order = 'YXZ';
             dummy.rotation.y = ry;
-            dummy.rotation.x = 0.3;
+            dummy.rotation.x = 0.55;
             dummy.updateMatrix();
             part.mesh.setMatrixAt(i, dummy.matrix);
           } else if (part.flukeL || part.flukeR) {
             const side = part.flukeL ? 1 : -1;
-            const tailStem = 0.56;
+            const tailStem = 0.80;
             const tailX = px - Math.sin(ry) * tailStem;
             const tailZ = pz - Math.cos(ry) * tailStem;
-            const yawSpread = 0.5;
-            const flap = Math.sin(t * 1.4 + phase) * 0.12;
-            dummy.position.set(tailX, py + 0.02, tailZ);
-            dummy.scale.set(1.85, 0.14, 1.05);
+            // Periodic tail slap: slow cycle (~9s), only the rising peak is visible
+            const raw = Math.sin(t * 0.7 + phase);
+            const slapFlap = Math.max(0, raw - 0.5) / 0.5; // 0 most of the time, peaks to 1
+            const flukeY = py - 0.10 + slapFlap * 0.60; // breaches well above waterline
+            // Lateral spread
+            const latX = Math.cos(ry) * side * 0.14;
+            const latZ = -Math.sin(ry) * side * 0.14;
+            dummy.position.set(tailX + latX, flukeY, tailZ + latZ);
+            // scale.z SMALL → flukes are flat/horizontal; scale.x LARGE → wide spread
+            dummy.scale.set(3.2, 0.65, 0.10);
             dummy.rotation.order = 'YXZ';
-            dummy.rotation.y = ry + side * yawSpread + flap * side;
-            dummy.rotation.x = -Math.PI / 2 + 0.02;
-            dummy.rotation.z = side * 0.04;
+            dummy.rotation.y = ry + side * 0.36;
+            // Tip pitches from flat (resting) to nearly vertical (breach) during slap
+            dummy.rotation.x = -Math.PI / 2 + 0.10 + slapFlap * (Math.PI / 2 - 0.1);
+            dummy.rotation.z = side * 0.08;
             dummy.updateMatrix();
             part.mesh.setMatrixAt(i, dummy.matrix);
           } else if (part.fishTailL || part.fishTailR) {
@@ -1294,15 +1418,19 @@ export class TerrainRenderer {
             dummy.updateMatrix();
             part.mesh.setMatrixAt(i, dummy.matrix);
           } else if (part.whalePecL || part.whalePecR) {
-            // Long swept pectoral flippers — flat and narrow, angled down and back
+            // Long humpback pectoral flippers — extend perpendicular to body axis
             const side = part.whalePecL ? 1 : -1;
-            const fx = px + Math.sin(ry) * 0.12 + Math.cos(ry) * side * 0.18;
-            const fz = pz + Math.cos(ry) * 0.12 - Math.sin(ry) * side * 0.18;
-            dummy.position.set(fx, py - inst.scale[1] * 0.06, fz);
-            dummy.scale.set(0.18, 0.1, 2.4);
+            // Position: slightly forward of center, offset to side
+            const fx = px + Math.sin(ry) * 0.15 + Math.cos(ry) * side * 0.15;
+            const fz = pz + Math.cos(ry) * 0.15 - Math.sin(ry) * side * 0.15;
+            dummy.position.set(fx, py - inst.scale[1] * 0.10, fz);
+            // Long in local-X: with rotation.y = ry, local-X maps to world-perpendicular
+            // so flippers fan out sideways from the body
+            dummy.scale.set(3.6, 0.10, 0.42);
             dummy.rotation.order = 'YXZ';
-            dummy.rotation.y = ry + side * 0.25;
-            dummy.rotation.x = 0.25;
+            dummy.rotation.y = ry;
+            dummy.rotation.x = 0.35;
+            dummy.rotation.z = side * 0.12;
             dummy.updateMatrix();
             part.mesh.setMatrixAt(i, dummy.matrix);
           } else if (part.tail) {
@@ -1370,6 +1498,138 @@ export class TerrainRenderer {
       }
     }
     return best;
+  }
+
+  _buildGlaciers(stoneTiles) {
+    // Glacier tiles = STONE tiles adjacent to at least one MOUNTAIN tile
+    const glacierTiles = stoneTiles.filter(t =>
+      [-1, 0, 1].some(dz => [-1, 0, 1].some(dx => {
+        if (dx === 0 && dz === 0) return false;
+        const nx = t.x + dx, nz = t.z + dz;
+        if (nx < 0 || nx >= this.world.width || nz < 0 || nz >= this.world.height) return false;
+        return this.world.tiles[nz][nx].type === TileType.MOUNTAIN;
+      }))
+    );
+    if (!glacierTiles.length) return;
+
+    const surfY = TerrainRenderer.surfaceY(TileType.STONE);
+    const dummy = new THREE.Object3D();
+
+    // ── Main ice slab ─────────────────────────────────────────────────
+    const slabGeom = new THREE.BoxGeometry(TILE_SIZE * 0.90, 0.22, TILE_SIZE * 0.90);
+    const slabMat  = new THREE.MeshStandardMaterial({
+      color: 0xbee0f8, roughness: 0.06, metalness: 0.18,
+      transparent: true, opacity: 0.88,
+    });
+    const slabMesh = new THREE.InstancedMesh(slabGeom, slabMat, glacierTiles.length);
+
+    glacierTiles.forEach((tile, i) => {
+      const jx = (this._rng(tile.x, tile.z, 70) - 0.5) * 0.12;
+      const jz = (this._rng(tile.x, tile.z, 71) - 0.5) * 0.12;
+      dummy.position.set(
+        tile.x * TILE_SIZE + TILE_SIZE / 2 + jx,
+        surfY + 0.11,
+        tile.z * TILE_SIZE + TILE_SIZE / 2 + jz,
+      );
+      dummy.scale.set(1, 1, 1);
+      dummy.rotation.set(0, this._rng(tile.x, tile.z, 72) * 0.3, 0);
+      dummy.updateMatrix();
+      slabMesh.setMatrixAt(i, dummy.matrix);
+    });
+    slabMesh.instanceMatrix.needsUpdate = true;
+    slabMesh.castShadow = true;
+    slabMesh.receiveShadow = true;
+    this.scene.add(slabMesh);
+    this._meshes.push(slabMesh);
+    this._glacierMesh = slabMesh;
+    this._glacierTiles = glacierTiles;
+
+    // ── Ice spikes on ~35% of glacier tiles ──────────────────────────
+    const spikeTiles = glacierTiles.filter(t => this._rng(t.x, t.z, 75) < 0.35);
+    if (spikeTiles.length) {
+      const spikeGeom = new THREE.CylinderGeometry(0.028, 0.075, 0.40, 5);
+      const spikeMat  = new THREE.MeshStandardMaterial({
+        color: 0xddf4ff, roughness: 0.04, transparent: true, opacity: 0.80,
+      });
+      const spikeMesh = new THREE.InstancedMesh(spikeGeom, spikeMat, spikeTiles.length * 3);
+      let si = 0;
+      spikeTiles.forEach(tile => {
+        for (let k = 0; k < 3; k++) {
+          const sx = tile.x * TILE_SIZE + TILE_SIZE / 2 + (this._rng(tile.x + k, tile.z, 76) - 0.5) * 1.3;
+          const sz = tile.z * TILE_SIZE + TILE_SIZE / 2 + (this._rng(tile.x, tile.z + k, 77) - 0.5) * 1.3;
+          const sc  = 0.5 + this._rng(tile.x + k, tile.z + k, 78) * 0.9;
+          const tlt = (this._rng(tile.x + k, tile.z, 79) - 0.5) * 0.28;
+          dummy.position.set(sx, surfY + 0.22 + 0.20 * sc, sz);
+          dummy.scale.set(sc, sc, sc);
+          dummy.rotation.set(tlt, this._rng(tile.x, tile.z + k, 80) * Math.PI * 2, tlt);
+          dummy.updateMatrix();
+          spikeMesh.setMatrixAt(si++, dummy.matrix);
+        }
+      });
+      spikeMesh.instanceMatrix.needsUpdate = true;
+      spikeMesh.castShadow = true;
+      this.scene.add(spikeMesh);
+      this._meshes.push(spikeMesh);
+      this._glacierSpikeMesh = spikeMesh;
+      this._glacierSpikeTiles = spikeTiles;
+    }
+  }
+
+  /** Update glacier visuals to match current melt state */
+  updateGlaciers(glacierData) {
+    if (!this._glacierMesh || !this._glacierTiles) return;
+    const surfY = TerrainRenderer.surfaceY(TileType.STONE);
+    const dummy = new THREE.Object3D();
+
+    // Slab mesh
+    this._glacierTiles.forEach((tile, i) => {
+      const g  = glacierData.get(`${tile.x},${tile.z}`);
+      const m  = g ? g.melt : 0;
+      const sy = Math.max(0.02, 1 - m * 0.96);
+      const sx = Math.max(0.06, 1 - m * 0.42);
+      const jx = (this._rng(tile.x, tile.z, 70) - 0.5) * 0.12;
+      const jz = (this._rng(tile.x, tile.z, 71) - 0.5) * 0.12;
+      dummy.position.set(
+        tile.x * TILE_SIZE + TILE_SIZE / 2 + jx,
+        surfY + 0.11 * sy,
+        tile.z * TILE_SIZE + TILE_SIZE / 2 + jz,
+      );
+      dummy.scale.set(sx, sy, sx);
+      dummy.rotation.set(0, this._rng(tile.x, tile.z, 72) * 0.3, 0);
+      dummy.updateMatrix();
+      this._glacierMesh.setMatrixAt(i, dummy.matrix);
+    });
+    this._glacierMesh.instanceMatrix.needsUpdate = true;
+
+    // Fade material opacity with average melt
+    const avgMelt = this._glacierTiles.reduce((s, t) => {
+      const g = glacierData.get(`${t.x},${t.z}`);
+      return s + (g ? g.melt : 0);
+    }, 0) / this._glacierTiles.length;
+    this._glacierMesh.material.opacity = Math.max(0.12, 0.88 - avgMelt * 0.55);
+
+    // Spike mesh
+    if (this._glacierSpikeMesh && this._glacierSpikeTiles) {
+      let si = 0;
+      this._glacierSpikeTiles.forEach(tile => {
+        const g  = glacierData.get(`${tile.x},${tile.z}`);
+        const m  = g ? g.melt : 0;
+        const sy = Math.max(0.01, 1 - m * 0.96);
+        for (let k = 0; k < 3; k++) {
+          const sx2 = tile.x * TILE_SIZE + TILE_SIZE / 2 + (this._rng(tile.x + k, tile.z, 76) - 0.5) * 1.3;
+          const sz2 = tile.z * TILE_SIZE + TILE_SIZE / 2 + (this._rng(tile.x, tile.z + k, 77) - 0.5) * 1.3;
+          const sc  = (0.5 + this._rng(tile.x + k, tile.z + k, 78) * 0.9) * sy;
+          const tlt = (this._rng(tile.x + k, tile.z, 79) - 0.5) * 0.28;
+          dummy.position.set(sx2, surfY + 0.22 + 0.20 * sc, sz2);
+          dummy.scale.set(sc, sc, sc);
+          dummy.rotation.set(tlt, this._rng(tile.x, tile.z + k, 80) * Math.PI * 2, tlt);
+          dummy.updateMatrix();
+          this._glacierSpikeMesh.setMatrixAt(si++, dummy.matrix);
+        }
+      });
+      this._glacierSpikeMesh.instanceMatrix.needsUpdate = true;
+      this._glacierSpikeMesh.material.opacity = Math.max(0.08, 0.80 - avgMelt * 0.55);
+    }
   }
 
   /** Returns the approximate top-surface Y for a given tile type */
