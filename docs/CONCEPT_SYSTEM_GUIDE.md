@@ -1,6 +1,6 @@
 # Concept & Discovery System — Logic Guide
 
-This guide explains how the concept/discovery system works across the World simulation: how concepts are defined, discovered, spread, and applied to agents and the world.
+This guide explains how the concept/discovery system works across Laila's World: how concepts are defined, discovered, spread, and applied to agents and the world.
 
 ---
 

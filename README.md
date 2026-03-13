@@ -1,4 +1,4 @@
-# World
+# Laila's World
 
 A passive emergent-civilisation simulator. Watch primitive agents discover fire, language, and society — or fade from the earth.
 
