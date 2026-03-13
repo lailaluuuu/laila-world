@@ -6,10 +6,13 @@ import { WorldRenderer }     from './renderer/WorldRenderer.js';
 import { TerrainRenderer }   from './renderer/TerrainRenderer.js';
 import { AgentRenderer }     from './renderer/AgentRenderer.js';
 import { BuildingRenderer }  from './renderer/BuildingRenderer.js';
+import { WildHorse }         from './simulation/WildHorse.js';
+import { WildHorseRenderer } from './renderer/WildHorseRenderer.js';
 import { TimeSystem }        from './systems/TimeSystem.js';
 import { WeatherSystem }     from './systems/WeatherSystem.js';
 
 const AGENT_COUNT = 12;
+const WILD_HORSE_COUNT = 4;
 
 // ── Error handling ──────────────────────────────────────────────────────────
 
@@ -55,6 +58,8 @@ async function init() {
   }
 
   let world; let conceptGraph; let terrainRenderer; let ar; let buildingRenderer; let time; let weather;
+  let horses = [];
+  let horseRenderer;
   try {
   world = new World();
   world.naturalFires = new Map();
@@ -65,6 +70,8 @@ async function init() {
   const wr = new WorldRenderer(canvas);
   terrainRenderer = new TerrainRenderer(wr.scene, world);
   ar = new AgentRenderer(wr.scene, agents, world);
+  horses = world.getWildHorseSpawnPoints(WILD_HORSE_COUNT).map(p => new WildHorse(p.x, p.z));
+  horseRenderer = new WildHorseRenderer(wr.scene, horses, world);
   buildingRenderer = new BuildingRenderer(wr.scene, world);
 
   time = new TimeSystem();
@@ -154,6 +161,7 @@ async function init() {
     try {
     terrainRenderer.dispose();
     ar.dispose();
+    horseRenderer.dispose();
     buildingRenderer.dispose();
 
     world = new World();
@@ -166,6 +174,9 @@ async function init() {
 
     terrainRenderer = new TerrainRenderer(wr.scene, world);
     ar = new AgentRenderer(wr.scene, agents, world);
+    horses.length = 0;
+    world.getWildHorseSpawnPoints(WILD_HORSE_COUNT).forEach(p => horses.push(new WildHorse(p.x, p.z)));
+    horseRenderer = new WildHorseRenderer(wr.scene, horses, world);
     buildingRenderer = new BuildingRenderer(wr.scene, world);
 
     time.gameTime = (8 / 24) * 120; // reset to 08:00
@@ -528,6 +539,7 @@ async function init() {
       }
 
       const wMult = weather.energyDrainMult;
+      for (const h of horses) h.tick(delta, world);
       for (const agent of agents) {
         if (agent?.health > 0) {
           try {
@@ -594,6 +606,7 @@ async function init() {
     wr.setWeather(weather.meta);
     terrainRenderer.updateAnimals(delta > 0 ? delta : 0);
     ar.update();
+    horseRenderer.update();
     buildingRenderer.checkAgents(agents);
     wr.updateRain(realDelta, weather.isRaining, weather.isStorm);
     wr.render();

@@ -159,6 +159,24 @@ export class World {
     return candidates.slice(0, count);
   }
 
+  /** Spawn positions on GRASS or FOREST only (wild horses stay off stone/water). */
+  getWildHorseSpawnPoints(count) {
+    const candidates = [];
+    for (let z = 0; z < this.height; z++) {
+      for (let x = 0; x < this.width; x++) {
+        const t = this.tiles[z][x].type;
+        if (t === TileType.GRASS || t === TileType.FOREST) {
+          candidates.push({ x: x + 0.5, z: z + 0.5 });
+        }
+      }
+    }
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+    return candidates.slice(0, count);
+  }
+
   /** Estimated carrying capacity from food-producing tiles (GRASS + FOREST). No upper cap — apply max in main.js. */
   getCarryingCapacity() {
     const foodTiles = this.getTilesOfType([TileType.GRASS, TileType.FOREST]).length;
