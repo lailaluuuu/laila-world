@@ -604,7 +604,10 @@ async function init() {
     // Rendering always runs (for smooth camera)
     wr.setTimeOfDay(time.timeOfDay);
     wr.setWeather(weather.meta);
-    terrainRenderer.updateAnimals(delta > 0 ? delta : 0);
+    terrainRenderer.updateAnimals(delta > 0 ? delta : 0, {
+      gameTime: time.gameTime,
+      dayLength: time.dayLength,
+    });
     ar.update();
     horseRenderer.update();
     buildingRenderer.checkAgents(agents);
