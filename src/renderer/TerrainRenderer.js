@@ -623,23 +623,25 @@ export class TerrainRenderer {
       const wIdx = Math.floor(whaleDeepTiles.length * 0.5) % whaleDeepTiles.length;
       const wTile = whaleDeepTiles[wIdx];
 
-      // Whale: capsule hull + rostrum + dorsal fin + horizontal flukes (Lambert, low poly)
-      const whaleBodyGeom = new THREE.CapsuleGeometry(0.10, 0.72, 5, 10);
-      whaleBodyGeom.rotateX(-Math.PI / 2);
-      const whaleBodyMat = new THREE.MeshLambertMaterial({ color: 0x1a3050 });
+      // Cartoon whale: chunky rounded body, light belly, soft fin, big paddle flukes (Lambert)
+      const whaleBodyGeom = new THREE.SphereGeometry(0.19, 9, 7);
+      const whaleBodyMat = new THREE.MeshLambertMaterial({ color: 0x4a8fd9 });
       const whaleMesh = new THREE.InstancedMesh(whaleBodyGeom, whaleBodyMat, 1);
 
-      const headGeom = new THREE.SphereGeometry(0.095, 6, 5);
-      const headMat = new THREE.MeshLambertMaterial({ color: 0x1e3a5c });
-      const headMesh = new THREE.InstancedMesh(headGeom, headMat, 1);
+      const bellyGeom = new THREE.SphereGeometry(0.165, 7, 5);
+      const bellyMat = new THREE.MeshLambertMaterial({ color: 0xd6ecff });
+      const bellyMesh = new THREE.InstancedMesh(bellyGeom, bellyMat, 1);
 
-      const dorsalGeom = new THREE.ConeGeometry(0.055, 0.15, 4);
-      dorsalGeom.rotateZ(Math.PI / 2);
-      const dorsalMat = new THREE.MeshLambertMaterial({ color: 0x152840 });
+      const snoutGeom = new THREE.SphereGeometry(0.09, 7, 6);
+      const snoutMat = new THREE.MeshLambertMaterial({ color: 0x5c9fe8 });
+      const snoutMesh = new THREE.InstancedMesh(snoutGeom, snoutMat, 1);
+
+      const dorsalGeom = new THREE.SphereGeometry(0.055, 6, 5);
+      const dorsalMat = new THREE.MeshLambertMaterial({ color: 0x3d7abf });
       const dorsalMesh = new THREE.InstancedMesh(dorsalGeom, dorsalMat, 1);
 
-      const flukeGeom = new THREE.BoxGeometry(0.26, 0.022, 0.16);
-      const flukeMat = new THREE.MeshLambertMaterial({ color: 0x122338 });
+      const flukeGeom = new THREE.SphereGeometry(0.11, 7, 6);
+      const flukeMat = new THREE.MeshLambertMaterial({ color: 0x3d7abf });
       const flukeL = new THREE.InstancedMesh(flukeGeom, flukeMat, 1);
       const flukeR = new THREE.InstancedMesh(flukeGeom, flukeMat, 1);
 
@@ -653,7 +655,7 @@ export class TerrainRenderer {
         x: wx, z: wz, targetX: wx, targetZ: wz,
         homeX: wTile.x, homeZ: wTile.z,
         baseY: surfY(TileType.DEEP_WATER) + 0.02,
-        scale: [2.0, 1.15, 1.05],
+        scale: [2.15, 1.12, 1.28],
         rotY: wSeed, seed: wSeed,
       }];
       // Blowhole: once per in-game day at noon (game clock); tall + readable on water
@@ -702,15 +704,17 @@ export class TerrainRenderer {
         whaleSpout: { mist: mistLayer, spray: sprayLayer },
       };
       whaleMesh.castShadow = true;
-      headMesh.castShadow = true;
+      bellyMesh.castShadow = true;
+      snoutMesh.castShadow = true;
       dorsalMesh.castShadow = true;
       flukeL.castShadow = true;
       flukeR.castShadow = true;
       addAnimated(whaleMesh, whaleInstances, whaleConfig, [
-        { mesh: headMesh, offset: 0.52, whaleHead: true },
-        { mesh: dorsalMesh, offset: 0.06, dorsal: true },
-        { mesh: flukeL, offset: -0.62, flukeL: true },
-        { mesh: flukeR, offset: -0.62, flukeR: true },
+        { mesh: bellyMesh, offset: 0, whaleBelly: true },
+        { mesh: snoutMesh, offset: 0.48, whaleHead: true },
+        { mesh: dorsalMesh, offset: 0.02, dorsal: true },
+        { mesh: flukeL, offset: -0.55, flukeL: true },
+        { mesh: flukeR, offset: -0.55, flukeR: true },
       ]);
     }
   }
@@ -945,11 +949,19 @@ export class TerrainRenderer {
             dummy.rotation.x = -Math.PI / 2;
             dummy.updateMatrix();
             part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.whaleBelly) {
+            dummy.position.set(px, py - inst.scale[1] * 0.04, pz);
+            dummy.scale.set(inst.scale[0] * 0.92, 0.38, inst.scale[2] * 0.88);
+            dummy.rotation.order = 'YXZ';
+            dummy.rotation.y = ry;
+            dummy.rotation.x = 0;
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
           } else if (part.whaleHead) {
             const hx = px + Math.sin(ry) * part.offset;
             const hz = pz + Math.cos(ry) * part.offset;
-            dummy.position.set(hx, py + 0.02, hz);
-            dummy.scale.set(1.15, 0.88, 1.0);
+            dummy.position.set(hx, py + inst.scale[1] * 0.06, hz);
+            dummy.scale.set(1.25, 1.1, 1.15);
             dummy.rotation.order = 'YXZ';
             dummy.rotation.y = ry;
             dummy.rotation.x = 0;
@@ -958,26 +970,26 @@ export class TerrainRenderer {
           } else if (part.dorsal) {
             const mx = px + Math.sin(ry) * part.offset;
             const mz = pz + Math.cos(ry) * part.offset;
-            dummy.position.set(mx, py + inst.scale[1] * 0.11 + 0.14, mz);
-            dummy.scale.set(1, 1, 1);
+            dummy.position.set(mx, py + inst.scale[1] * 0.14 + 0.1, mz);
+            dummy.scale.set(0.75, 1.35, 1.1);
             dummy.rotation.order = 'YXZ';
             dummy.rotation.y = ry;
-            dummy.rotation.x = Math.PI / 2 - 0.12;
+            dummy.rotation.x = Math.PI / 2 - 0.25;
             dummy.updateMatrix();
             part.mesh.setMatrixAt(i, dummy.matrix);
           } else if (part.flukeL || part.flukeR) {
             const side = part.flukeL ? 1 : -1;
-            const tailStem = 0.62;
+            const tailStem = 0.56;
             const tailX = px - Math.sin(ry) * tailStem;
             const tailZ = pz - Math.cos(ry) * tailStem;
-            const yawSpread = 0.42;
-            const flap = Math.sin(t * 1.2 + phase) * 0.08;
-            dummy.position.set(tailX, py + 0.04, tailZ);
-            dummy.scale.set(1, 1, 1);
+            const yawSpread = 0.5;
+            const flap = Math.sin(t * 1.4 + phase) * 0.12;
+            dummy.position.set(tailX, py + 0.02, tailZ);
+            dummy.scale.set(1.85, 0.14, 1.05);
             dummy.rotation.order = 'YXZ';
             dummy.rotation.y = ry + side * yawSpread + flap * side;
-            dummy.rotation.x = -Math.PI / 2 + 0.05;
-            dummy.rotation.z = side * 0.06;
+            dummy.rotation.x = -Math.PI / 2 + 0.02;
+            dummy.rotation.z = side * 0.04;
             dummy.updateMatrix();
             part.mesh.setMatrixAt(i, dummy.matrix);
           } else if (part.tail) {
