@@ -781,43 +781,52 @@ export class TerrainRenderer {
             if (gTime >= target - 1e-6) target += dayLen;
             inst._nextWhaleSpoutGameT = target;
           }
+
+          const spawnMist = (n) => {
+            let s = 0;
+            for (const p of mist.particles) {
+              if (s >= n) break;
+              if (p.life <= 0) {
+                p.x = bhX + (Math.random() - 0.5) * 0.1;
+                p.y = bhY;
+                p.z = bhZ + (Math.random() - 0.5) * 0.1;
+                p.vx = (Math.random() - 0.5) * 0.35;
+                p.vy = 0.55 + Math.random() * 0.75;
+                p.vz = (Math.random() - 0.5) * 0.35;
+                p.maxLife = 1.0 + Math.random() * 1.15;
+                p.life = p.maxLife;
+                s++;
+              }
+            }
+          };
+          const spawnSpray = (n) => {
+            let s = 0;
+            for (const p of spray.particles) {
+              if (s >= n) break;
+              if (p.life <= 0) {
+                p.x = bhX + (Math.random() - 0.5) * 0.05;
+                p.y = bhY + 0.02;
+                p.z = bhZ + (Math.random() - 0.5) * 0.05;
+                p.vx = (Math.random() - 0.5) * 0.22;
+                p.vy = 0.85 + Math.random() * 0.95;
+                p.vz = (Math.random() - 0.5) * 0.22;
+                p.maxLife = 0.55 + Math.random() * 0.55;
+                p.life = p.maxLife;
+                s++;
+              }
+            }
+          };
+
+          // First frame after world load: guaranteed spout (pan to deep ocean to see it)
+          if (!inst._whaleLoadSpoutDone) {
+            inst._whaleLoadSpoutDone = true;
+            spawnMist(mist.particles.length);
+            spawnSpray(spray.particles.length);
+          }
+
           const doDailySpout = gTime >= inst._nextWhaleSpoutGameT;
           if (doDailySpout) {
             inst._nextWhaleSpoutGameT += dayLen;
-            const spawnMist = (n) => {
-              let s = 0;
-              for (const p of mist.particles) {
-                if (s >= n) break;
-                if (p.life <= 0) {
-                  p.x = bhX + (Math.random() - 0.5) * 0.1;
-                  p.y = bhY;
-                  p.z = bhZ + (Math.random() - 0.5) * 0.1;
-                  p.vx = (Math.random() - 0.5) * 0.35;
-                  p.vy = 0.55 + Math.random() * 0.75;
-                  p.vz = (Math.random() - 0.5) * 0.35;
-                  p.maxLife = 1.0 + Math.random() * 1.15;
-                  p.life = p.maxLife;
-                  s++;
-                }
-              }
-            };
-            const spawnSpray = (n) => {
-              let s = 0;
-              for (const p of spray.particles) {
-                if (s >= n) break;
-                if (p.life <= 0) {
-                  p.x = bhX + (Math.random() - 0.5) * 0.05;
-                  p.y = bhY + 0.02;
-                  p.z = bhZ + (Math.random() - 0.5) * 0.05;
-                  p.vx = (Math.random() - 0.5) * 0.22;
-                  p.vy = 0.85 + Math.random() * 0.95;
-                  p.vz = (Math.random() - 0.5) * 0.22;
-                  p.maxLife = 0.55 + Math.random() * 0.55;
-                  p.life = p.maxLife;
-                  s++;
-                }
-              }
-            };
             spawnMist(mist.particles.length);
             spawnSpray(spray.particles.length);
           }
