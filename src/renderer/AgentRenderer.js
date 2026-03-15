@@ -12,12 +12,9 @@ const STATE_COLOR = {
   [AgentState.DISCOVERING]: new THREE.Color(0xfb923c),
 };
 
-const LOVE_SOCIALIZING_COLOR = new THREE.Color(0xff6b9d);
 
 const DEAD_COLOR = new THREE.Color(0x2a2a2a);
 
-// Six varied skin tones, assigned round-robin by agent ID
-const SKIN_TONES = [0xf5d0a9, 0xebb98a, 0xd4956e, 0xc98b6a, 0xe8c49a, 0xbf8860];
 
 export class AgentRenderer {
   constructor(scene, agents, world) {
@@ -37,14 +34,24 @@ export class AgentRenderer {
   }
 
   _build() {
-    // Shared geometries — agents
-    this._bodyGeom = new THREE.CapsuleGeometry(0.155, 0.36, 4, 8);
-    this._headGeom = new THREE.SphereGeometry(0.155, 8, 7);
-    this._eyeGeom  = new THREE.SphereGeometry(0.038, 5, 4);
-    this._eyeMat   = new THREE.MeshStandardMaterial({ color: 0x111122, roughness: 0.5 });
+    // Sheep wool — overlapping spheres make a fluffy cloud-like body
+    this._puffData = [
+      { geom: new THREE.SphereGeometry(0.22, 8, 6),  x:  0,     y: 0.15, z:  0    },
+      { geom: new THREE.SphereGeometry(0.18, 7, 5),  x: -0.17,  y: 0.13, z:  0.02 },
+      { geom: new THREE.SphereGeometry(0.18, 7, 5),  x:  0.17,  y: 0.13, z:  0.02 },
+      { geom: new THREE.SphereGeometry(0.17, 7, 5),  x:  0,     y: 0.27, z: -0.02 },
+      { geom: new THREE.SphereGeometry(0.155, 7, 5), x: -0.09,  y: 0.22, z:  0.12 },
+      { geom: new THREE.SphereGeometry(0.155, 7, 5), x:  0.09,  y: 0.22, z:  0.12 },
+      { geom: new THREE.SphereGeometry(0.14, 7, 5),  x:  0,     y: 0.13, z: -0.17 },
+    ];
 
-    // Shared heart geometry — used for love indicator above agents
-    this._heartGeom = new THREE.SphereGeometry(0.13, 6, 6);
+    this._headGeom  = new THREE.SphereGeometry(0.10, 8, 6);
+    this._eyeGeom   = new THREE.SphereGeometry(0.022, 5, 4);
+    this._legGeom   = new THREE.CylinderGeometry(0.036, 0.030, 0.16, 5);
+
+    this._eyeMat   = new THREE.MeshStandardMaterial({ color: 0x111122, roughness: 0.5 });
+    this._faceMat  = new THREE.MeshStandardMaterial({ color: 0xdcc8a0, roughness: 0.85 });
+    this._legMat   = new THREE.MeshStandardMaterial({ color: 0xbcaa90, roughness: 0.90 });
 
     // Shared boat geometries
     this._boatHullGeom = new THREE.BoxGeometry(0.70, 0.11, 0.32);
@@ -92,47 +99,48 @@ export class AgentRenderer {
   }
 
   _createMeshFor(agent) {
-    const skinColor = SKIN_TONES[agent.id % SKIN_TONES.length];
-
+    const isBlackSheep = agent.id === 1;
     const bodyMat = new THREE.MeshStandardMaterial({
-      color: STATE_COLOR[agent.state] ?? STATE_COLOR[AgentState.WANDERING],
-      roughness: 0.78,
+      color: isBlackSheep ? 0x1a1a1a : 0xf5f2ec,
+      roughness: 0.72,
     });
-    const headMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.85 });
 
-    const body = new THREE.Mesh(this._bodyGeom, bodyMat);
-    body.castShadow = true;
+    // Wool puffs — all share bodyMat so state colour tints the whole fleece
+    const woolPuffs = this._puffData.map(({ geom, x, y, z }) => {
+      const puff = new THREE.Mesh(geom, bodyMat);
+      puff.position.set(x, y, z);
+      puff.castShadow = true;
+      return puff;
+    });
+    const body = woolPuffs[0]; // used for hit-testing
 
-    const head = new THREE.Mesh(this._headGeom, headMat);
-    head.castShadow = true;
-    head.position.y = 0.39;
+    // Head — small, forward-facing
+    const head = new THREE.Mesh(this._headGeom, this._faceMat);
+    head.position.set(0, 0.12, 0.26);
 
-    // Eyes — share geometry + material
+    // Eyes
     const eyeL = new THREE.Mesh(this._eyeGeom, this._eyeMat);
     const eyeR = new THREE.Mesh(this._eyeGeom, this._eyeMat);
-    eyeL.position.set(-0.065, 0.42, 0.125);
-    eyeR.position.set( 0.065, 0.42, 0.125);
+    eyeL.position.set(-0.048, 0.15, 0.30);
+    eyeR.position.set( 0.048, 0.15, 0.30);
+
+    // Four stubby legs — stored for walk animation (diagonal pairs: [0,3] and [1,2])
+    const legOffsets = [[-0.09, -0.12, 0.07], [0.09, -0.12, 0.07], [-0.09, -0.12, -0.07], [0.09, -0.12, -0.07]];
+    const legs = legOffsets.map(([x, y, z]) => {
+      const leg = new THREE.Mesh(this._legGeom, this._legMat);
+      leg.position.set(x, y, z);
+      return leg;
+    });
 
     const boatGroup = this._buildBoat();
     boatGroup.visible = false;
 
-    // Heart orb — glows pink when partner is nearby
-    const heartMat = new THREE.MeshStandardMaterial({
-      color: 0xff6b9d,
-      emissive: new THREE.Color(0xff2266),
-      emissiveIntensity: 0.7,
-      transparent: true,
-      opacity: 0,
-    });
-    const heartMesh = new THREE.Mesh(this._heartGeom, heartMat);
-    heartMesh.position.set(0, 0.72, 0);
-
     const group = new THREE.Group();
-    group.add(body, head, eyeL, eyeR, boatGroup, heartMesh);
+    group.add(...woolPuffs, head, eyeL, eyeR, ...legs, boatGroup);
     group.userData.agentId = agent.id;
 
     this.scene.add(group);
-    this.meshes.push({ group, body, bodyMat, headMat, boatGroup, heartMesh, heartMat, agent });
+    this.meshes.push({ group, body, bodyMat, boatGroup, legs, agent });
   }
 
   /** Call this when a new agent is born at runtime */
@@ -142,17 +150,17 @@ export class AgentRenderer {
 
   /** Remove all agent meshes and free GPU memory */
   dispose() {
-    for (const { group, bodyMat, headMat, heartMat } of this.meshes) {
+    for (const { group, bodyMat } of this.meshes) {
       this.scene.remove(group);
       bodyMat.dispose();
-      headMat.dispose();
-      heartMat?.dispose();
     }
-    this._bodyGeom.dispose();
+    for (const { geom } of this._puffData) geom.dispose();
     this._headGeom.dispose();
     this._eyeGeom.dispose();
+    this._legGeom.dispose();
     this._eyeMat.dispose();
-    this._heartGeom.dispose();
+    this._faceMat.dispose();
+    this._legMat.dispose();
     this._boatHullGeom.dispose();
     this._boatMastGeom.dispose();
     this._sailGeom.dispose();
@@ -180,13 +188,12 @@ export class AgentRenderer {
         for (const entry of toRemove) {
           this.scene.remove(entry.group);
           entry.bodyMat.dispose();
-          entry.headMat.dispose();
         }
         this.meshes = this.meshes.filter(e => e.agent.health > 0);
       }
     }
 
-    for (const { group, bodyMat, boatGroup, heartMesh, heartMat, agent } of this.meshes) {
+    for (const { group, bodyMat, boatGroup, legs, agent } of this.meshes) {
       if (agent.health <= 0) {
         bodyMat.color.copy(DEAD_COLOR);
         bodyMat.emissive.set(0x000000);
@@ -212,34 +219,26 @@ export class AgentRenderer {
       boatGroup.visible = onWater && hasSailing;
 
       // Body colour + emissive selection highlight
-      if (agent.discoveryFlash > 0) {
-        bodyMat.color.copy(STATE_COLOR[AgentState.DISCOVERING]);
-        bodyMat.emissive.setHex(0x3a1a00);
-      } else {
-        const inLoveSocial = agent.state === AgentState.SOCIALIZING && agent.partner;
-        bodyMat.color.copy(inLoveSocial ? LOVE_SOCIALIZING_COLOR : (STATE_COLOR[agent.state] ?? STATE_COLOR[AgentState.WANDERING]));
-        bodyMat.emissive.setHex(agent.selected ? 0x222244 : 0x000000);
-      }
-
-      // Heart orb: fade in when partner is nearby
-      if (heartMesh && heartMat) {
-        const partnerNear = agent.partner && agent.partner.health > 0 &&
-          Math.hypot(agent.x - agent.partner.x, agent.z - agent.partner.z) < 4.0;
-        const targetOpacity = partnerNear ? 0.9 : 0.0;
-        heartMat.opacity += (targetOpacity - heartMat.opacity) * 0.06;
-        const t = Date.now() * 0.001;
-        heartMesh.position.y = 0.72 + Math.sin(t * 3.5 + agent.id * 2.1) * 0.10;
-        const pulse = 1.0 + 0.22 * Math.sin(t * 5.0 + agent.id);
-        heartMesh.scale.setScalar(pulse);
-      }
+      bodyMat.emissive.setHex(agent.selected ? 0x222244 : 0x000000);
 
       if (agent.selected) ringTarget = group;
 
       // Juveniles are visibly smaller
       group.scale.setScalar(agent.isAdult ? 1.0 : 0.55);
 
-      // Slight bob
-      group.position.y += Math.sin(Date.now() * 0.003 + agent.id * 1.3) * 0.04;
+      // Leg walk animation — slow amble, stops when sleeping
+      const walking = agent.state !== AgentState.SLEEPING;
+      const t = Date.now() * 0.00038 + agent.id * 2.4;
+      const swing = walking ? 0.28 * Math.sin(t) : 0;
+      legs[0].rotation.x =  swing;       // front-left
+      legs[3].rotation.x =  swing;       // back-right  (same diagonal pair)
+      legs[1].rotation.x = -swing;       // front-right
+      legs[2].rotation.x = -swing;       // back-left   (opposite pair)
+
+      // Gentle body bob in sync with step
+      group.position.y += walking
+        ? Math.abs(Math.sin(t)) * 0.018   // lifts slightly on each stride
+        : Math.sin(Date.now() * 0.0004 + agent.id * 1.3) * 0.010; // slow sleeping sway
     }
 
     // Selection ring follows selected agent with a gentle pulse
@@ -270,7 +269,8 @@ export class AgentRenderer {
     const activeIds = new Set();
 
     for (const { group, agent } of this.meshes) {
-      if (agent.health <= 0 || !agent.speechBubble) {
+      const camDist = group.position.distanceTo(camera.position);
+      if (agent.health <= 0 || !agent.speechBubble || camDist > 10) {
         const el = this._bubbleEls.get(agent.id);
         if (el) { el.style.display = 'none'; }
         continue;
@@ -301,7 +301,10 @@ export class AgentRenderer {
         this._bubbleEls.set(agent.id, el);
       }
 
-      if (el.textContent !== agent.speechBubble) el.textContent = agent.speechBubble;
+      if (!el._typing) {
+        el.innerHTML = '<span></span><span></span><span></span>';
+        el._typing = true;
+      }
       el.style.display = '';
       el.style.left = `${sx}px`;
       el.style.top  = `${sy}px`;

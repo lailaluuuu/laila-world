@@ -245,9 +245,11 @@ export class TerrainRenderer {
       const narrowGeom       = new THREE.SphereGeometry(0.26, 6, 5);
 
       // ── Helper: create + register one tree variant ──────────────────────
+      // trunkHalfH: half the trunk cylinder height — trunk center sits here above surfY
+      // foliageY: where the foliage centre sits above surfY (should = trunkH + foliage_half_height)
       // fsx/fsy/fsz: per-axis foliage scale multipliers (for flattening etc.)
       const addTreeVariant = (tiles, tGeom, tColor, fGeom, fColor, foliageY,
-        { scaleMin = 0.85, scaleMax = 1.22, fsx = 1, fsy = 1, fsz = 1 } = {}) => {
+        { scaleMin = 0.85, scaleMax = 1.22, fsx = 1, fsy = 1, fsz = 1, trunkHalfH = 0.19 } = {}) => {
         if (!tiles.length) return;
         const tMat = new THREE.MeshLambertMaterial({ color: tColor });
         const fMat = new THREE.MeshLambertMaterial({ color: fColor });
@@ -261,7 +263,7 @@ export class TerrainRenderer {
           const sc = scaleMin + this._rng(tile.x, tile.z, 7) * (scaleMax - scaleMin);
           const ry = this._rng(tile.x, tile.z, 8) * Math.PI * 2;
           dummy.rotation.set(0, ry, 0);
-          dummy.position.set(cx, surfY + 0.19 * sc, cz);
+          dummy.position.set(cx, surfY + trunkHalfH * sc, cz);
           dummy.scale.set(sc, sc, sc);
           dummy.updateMatrix();
           tMesh.setMatrixAt(i, dummy.matrix);
@@ -306,54 +308,54 @@ export class TerrainRenderer {
         else               grp.lime.push(tile);
       });
 
-      // Pine — classic evergreen cone
+      // Pine — classic dark-green cone; cone base naturally overlaps trunk top
       addTreeVariant(grp.pine,      normalTrunkGeom, 0x78350f, pineGeom,    0x166534, 0.72);
-      // Oak — round bushy canopy
-      addTreeVariant(grp.oak,       normalTrunkGeom, 0x6b3a1f, roundGeom,   0x2d7530, 0.80);
-      // Cherry blossom — classic soft pink, wide flattened dome
-      addTreeVariant(grp.cherry,      cherryTrunkGeom, 0x5c2810, cherryGeom,     0xffacc5, 0.78,
-        { scaleMin: 0.80, scaleMax: 1.10, fsx: 1.22, fsy: 0.78, fsz: 1.22 });
-      // Cherry blossom deep — vivid hot-magenta, larger fuller canopy
-      addTreeVariant(grp.cherryDeep,  cherryTrunkGeom, 0x4a1a08, cherryDeepGeom, 0xff4fa0, 0.80,
-        { scaleMin: 0.85, scaleMax: 1.18, fsx: 1.28, fsy: 0.82, fsz: 1.28 });
-      // Cherry blossom white — nearly-white blush, delicate wispy crown
-      addTreeVariant(grp.cherryWhite, cherryTrunkGeom, 0x6b3828, cherryWispGeom, 0xffe8f2, 0.76,
-        { scaleMin: 0.75, scaleMax: 1.08, fsx: 1.15, fsy: 0.72, fsz: 1.15 });
-      // Autumn orange
-      addTreeVariant(grp.autOrange, normalTrunkGeom, 0x6b3a1f, roundGeom,   0xe07018, 0.80);
-      // Autumn red
-      addTreeVariant(grp.autRed,    normalTrunkGeom, 0x5a2010, roundGeom,   0xcc2808, 0.80);
-      // Autumn gold
-      addTreeVariant(grp.autGold,   normalTrunkGeom, 0x6b3a1f, roundGeom,   0xe0a010, 0.80);
-      // Dark fir — tall narrow dark evergreen
-      addTreeVariant(grp.darkFir,   tallTrunkGeom,   0x5c2a0e, darkFirGeom, 0x0d4a22, 0.92,
-        { scaleMin: 0.90, scaleMax: 1.38 });
+      // Oak — medium green round canopy sitting on trunk
+      addTreeVariant(grp.oak,       normalTrunkGeom, 0x6b3a1f, roundGeom,   0x2d7530, 0.72);
+      // Cherry blossom — soft pink, wide flattened dome
+      addTreeVariant(grp.cherry,      cherryTrunkGeom, 0x5c2810, cherryGeom,     0xffacc5, 0.70,
+        { scaleMin: 0.80, scaleMax: 1.10, fsx: 1.22, fsy: 0.78, fsz: 1.22, trunkHalfH: 0.20 });
+      // Cherry blossom deep — vivid hot pink, larger fuller canopy
+      addTreeVariant(grp.cherryDeep,  cherryTrunkGeom, 0x4a1a08, cherryDeepGeom, 0xff4fa0, 0.74,
+        { scaleMin: 0.85, scaleMax: 1.18, fsx: 1.28, fsy: 0.82, fsz: 1.28, trunkHalfH: 0.20 });
+      // Cherry blossom white — nearly-white blush wispy crown
+      addTreeVariant(grp.cherryWhite, cherryTrunkGeom, 0x6b3828, cherryWispGeom, 0xffe8f2, 0.65,
+        { scaleMin: 0.75, scaleMax: 1.08, fsx: 1.15, fsy: 0.72, fsz: 1.15, trunkHalfH: 0.20 });
+      // Bright leaf green (was autumn orange)
+      addTreeVariant(grp.autOrange, normalTrunkGeom, 0x6b3a1f, roundGeom,   0x4aab3a, 0.72);
+      // Deep forest green (was autumn red)
+      addTreeVariant(grp.autRed,    normalTrunkGeom, 0x5a2010, roundGeom,   0x1e5c2a, 0.72);
+      // Yellow-green (was autumn gold)
+      addTreeVariant(grp.autGold,   normalTrunkGeom, 0x6b3a1f, roundGeom,   0x8ec027, 0.72);
+      // Dark fir — tall narrow dark evergreen; trunkHalfH=0.275, foliage touches top
+      addTreeVariant(grp.darkFir,   tallTrunkGeom,   0x5c2a0e, darkFirGeom, 0x0d4a22, 1.06,
+        { scaleMin: 0.90, scaleMax: 1.38, trunkHalfH: 0.275 });
       // Birch — slender pale trunk, small bright canopy
-      addTreeVariant(grp.birch,     birchTrunkGeom,  0xc8b48a, birchGeom,   0x85c46a, 0.70,
-        { scaleMin: 0.75, scaleMax: 1.05 });
-      // Maple — deep crimson-red broad canopy
-      addTreeVariant(grp.maple,     normalTrunkGeom, 0x6b2c10, roundGeom,   0xa61c00, 0.80,
+      addTreeVariant(grp.birch,     birchTrunkGeom,  0xc8b48a, birchGeom,   0x85c46a, 0.68,
+        { scaleMin: 0.75, scaleMax: 1.05, trunkHalfH: 0.25 });
+      // Rich green (was maple red)
+      addTreeVariant(grp.maple,     normalTrunkGeom, 0x6b2c10, roundGeom,   0x2e7d32, 0.72,
         { scaleMin: 0.88, scaleMax: 1.25, fsx: 1.15, fsy: 0.90, fsz: 1.15 });
       // Willow — wide drooping olive-sage canopy
-      addTreeVariant(grp.willow,    willowTrunkGeom, 0x5a3c18, wideGeom,    0x8b9e3a, 0.72,
-        { scaleMin: 0.90, scaleMax: 1.30, fsx: 1.65, fsy: 0.52, fsz: 1.65 });
+      addTreeVariant(grp.willow,    willowTrunkGeom, 0x5a3c18, wideGeom,    0x8b9e3a, 0.62,
+        { scaleMin: 0.90, scaleMax: 1.30, fsx: 1.65, fsy: 0.52, fsz: 1.65, trunkHalfH: 0.21 });
       // Poplar — tall slender bright-green column
-      addTreeVariant(grp.poplar,    tallTrunkGeom,   0x5c3010, narrowGeom,  0x3d8b37, 0.95,
-        { scaleMin: 0.92, scaleMax: 1.40, fsx: 0.55, fsy: 1.85, fsz: 0.55 });
-      // Jacaranda — lavender-purple wide flattened crown
-      addTreeVariant(grp.jacaranda, cherryTrunkGeom, 0x4a2010, wideGeom,    0xb57bee, 0.76,
-        { scaleMin: 0.80, scaleMax: 1.15, fsx: 1.35, fsy: 0.68, fsz: 1.35 });
-      // Teal / jade — vivid teal-green globe
-      addTreeVariant(grp.teal,      normalTrunkGeom, 0x3d2a10, roundGeom,   0x0d9488, 0.80,
+      addTreeVariant(grp.poplar,    tallTrunkGeom,   0x5c3010, narrowGeom,  0x3d8b37, 1.02,
+        { scaleMin: 0.92, scaleMax: 1.40, fsx: 0.55, fsy: 1.85, fsz: 0.55, trunkHalfH: 0.275 });
+      // Sage green wide canopy (was jacaranda lavender)
+      addTreeVariant(grp.jacaranda, cherryTrunkGeom, 0x4a2010, wideGeom,    0x6aaa5a, 0.65,
+        { scaleMin: 0.80, scaleMax: 1.15, fsx: 1.35, fsy: 0.68, fsz: 1.35, trunkHalfH: 0.20 });
+      // Teal-green globe
+      addTreeVariant(grp.teal,      normalTrunkGeom, 0x3d2a10, roundGeom,   0x0d9488, 0.72,
         { scaleMin: 0.82, scaleMax: 1.20 });
-      // Autumn purple — deep violet round canopy
-      addTreeVariant(grp.autPurple, normalTrunkGeom, 0x4a1a08, roundGeom,   0x7c3aed, 0.80,
-        { scaleMin: 0.82, scaleMax: 1.18 });
-      // Spruce — narrow blue-green cone, slightly bluer than dark fir
-      addTreeVariant(grp.spruce,    tallTrunkGeom,   0x4a2a0a, spruceGeom,  0x2f7a4f, 0.88,
-        { scaleMin: 0.92, scaleMax: 1.35 });
+      // Dark pink cherry blossom (was autumn purple)
+      addTreeVariant(grp.autPurple, cherryTrunkGeom, 0x4a1a08, cherryGeom,  0xe0629e, 0.70,
+        { scaleMin: 0.82, scaleMax: 1.18, fsx: 1.18, fsy: 0.80, fsz: 1.18, trunkHalfH: 0.20 });
+      // Spruce — narrow blue-green cone
+      addTreeVariant(grp.spruce,    tallTrunkGeom,   0x4a2a0a, spruceGeom,  0x2f7a4f, 1.00,
+        { scaleMin: 0.92, scaleMax: 1.35, trunkHalfH: 0.275 });
       // Lime — bright acid-green round canopy
-      addTreeVariant(grp.lime,      normalTrunkGeom, 0x5c3010, roundGeom,   0x65a30d, 0.80,
+      addTreeVariant(grp.lime,      normalTrunkGeom, 0x5c3010, roundGeom,   0x65a30d, 0.72,
         { scaleMin: 0.80, scaleMax: 1.15 });
 
       // ── Fruits scattered within canopies ──────────────────────────────────
@@ -1028,95 +1030,72 @@ export class TerrainRenderer {
       ]);
     }
 
-    // ── Sheep on GRASS tiles ─────────────────────────────────────────────
-    const grassTiles = buckets[TileType.GRASS] ?? [];
-    const sheepTiles = grassTiles.filter(t => this._rng(t.x, t.z, 30) < 0.025);
-    const mobileGrazeConfig = {
-      label: 'Sheep', icon: '🐑',
-      description: 'A woolly sheep grazing on the grasslands.',
-      driftRadius: 0.12, driftSpeed: 0.3, bobAmount: 0.015, bobSpeed: 2.5,
-      mobile: true, moveSpeed: 0.30, tileType: TileType.GRASS, wanderRadius: 5,
-    };
-
-    if (sheepTiles.length > 0) {
-      // Woolly body: cylinder + head sphere + small fluffy tail
-      const sheepBodyGeom = new THREE.CylinderGeometry(0.22, 0.24, 0.18, 8);
-      const sheepMat      = new THREE.MeshLambertMaterial({ color: 0xfaf8f5 });
-      const sheepMesh     = new THREE.InstancedMesh(sheepBodyGeom, sheepMat, sheepTiles.length);
-      const sheepHeadGeom = new THREE.SphereGeometry(0.12, 6, 4);
-      const sheepHeadMat  = new THREE.MeshLambertMaterial({ color: 0xf0ebe0 });
-      const sheepHeadMesh = new THREE.InstancedMesh(sheepHeadGeom, sheepHeadMat, sheepTiles.length);
-      const sheepTailGeom = new THREE.SphereGeometry(0.065, 4, 3);
-      const sheepTailMat  = new THREE.MeshLambertMaterial({ color: 0xffffff });
-      const sheepTailMesh = new THREE.InstancedMesh(sheepTailGeom, sheepTailMat, sheepTiles.length);
-      const instances = sheepTiles.map((tile) => {
-        const ox = (this._rng(tile.x, tile.z, 31) - 0.5) * 0.9;
-        const oz = (this._rng(tile.x, tile.z, 32) - 0.5) * 0.9;
-        const seed = this._rng(tile.x, tile.z, 33) * Math.PI * 2;
-        const tx = tile.x + 0.5 + ox * 0.5;
-        const tz = tile.z + 0.5 + oz * 0.5;
-        return {
-          x: tx, z: tz, targetX: tx, targetZ: tz,
-          homeX: tile.x, homeZ: tile.z,
-          baseY: surfY(TileType.GRASS) + 0.2,
-          scale: [1, 1, 1],
-          headScale: [0.9, 1, 0.85],
-          rotY: seed, seed,
-        };
-      });
-      sheepMesh.castShadow = true;
-      sheepHeadMesh.castShadow = true;
-      addAnimated(sheepMesh, instances, mobileGrazeConfig, [
-        { mesh: sheepHeadMesh, offset: 0.28 },
-        { mesh: sheepTailMesh, offset: -0.24, tail: true },
-      ]);
-    }
-
     // ── Pigs on GRASS tiles ──────────────────────────────────────────────
+    const grassTiles = buckets[TileType.GRASS] ?? [];
     const pigTiles = grassTiles.filter(t => this._rng(t.x, t.z, 40) < 0.025);
-    const pigGrazeConfig = { ...mobileGrazeConfig, label: 'Pig', icon: '🐷', description: 'A stocky pig rooting around the pasture.', moveSpeed: 0.38, wanderRadius: 4 };
+    const pigGrazeConfig = { label: 'Pig', icon: '🐷', description: 'A stocky pig rooting around the pasture.', driftRadius: 0.10, driftSpeed: 0.3, bobAmount: 0.012, bobSpeed: 2.2, mobile: true, moveSpeed: 0.38, tileType: TileType.GRASS, wanderRadius: 4 };
     if (pigTiles.length > 0) {
-      // Barrel body + rounded head + tapered snout + curly tail
-      const pigBodyGeom  = new THREE.CylinderGeometry(0.15, 0.17, 0.22, 8);
-      const pigMat       = new THREE.MeshLambertMaterial({ color: 0xe8b4a0 });
+      // Fat sphere body + rounded head + wide disc snout + split ears + four stubby legs + curly tail
+      const pigBodyGeom  = new THREE.SphereGeometry(0.16, 8, 6);
+      const pigMat       = new THREE.MeshLambertMaterial({ color: 0xefc0ae });
       const pigMesh      = new THREE.InstancedMesh(pigBodyGeom, pigMat, pigTiles.length);
-      const pigHeadGeom  = new THREE.SphereGeometry(0.1, 6, 5);
-      const pigHeadMat   = new THREE.MeshLambertMaterial({ color: 0xe8b4a0 });
+      const pigHeadGeom  = new THREE.SphereGeometry(0.12, 7, 5);
+      const pigHeadMat   = new THREE.MeshLambertMaterial({ color: 0xefc0ae });
       const pigHeadMesh  = new THREE.InstancedMesh(pigHeadGeom, pigHeadMat, pigTiles.length);
-      const pigSnoutGeom = new THREE.CylinderGeometry(0.022, 0.045, 0.14, 5);
+      // Snout: wide flat disc so it looks like a real pig nose
+      const pigSnoutGeom = new THREE.CylinderGeometry(0.060, 0.068, 0.050, 7);
       const pigSnoutMat  = new THREE.MeshLambertMaterial({ color: 0xdd9a85 });
       const pigSnoutMesh = new THREE.InstancedMesh(pigSnoutGeom, pigSnoutMat, pigTiles.length);
-      const pigEarGeom   = new THREE.BoxGeometry(0.1, 0.018, 0.045);
-      const pigEarMat    = new THREE.MeshLambertMaterial({ color: 0xe0ac98 });
-      const pigEarMesh   = new THREE.InstancedMesh(pigEarGeom, pigEarMat, pigTiles.length);
-      const pigTailGeom  = new THREE.TorusGeometry(0.04, 0.018, 4, 6, Math.PI * 1.5);
+      // Separate left/right ears so they sit on the sides of the head
+      const pigEarGeom   = new THREE.BoxGeometry(0.034, 0.068, 0.014);
+      const pigEarMat    = new THREE.MeshLambertMaterial({ color: 0xe09090 });
+      const pigEarLMesh  = new THREE.InstancedMesh(pigEarGeom, pigEarMat, pigTiles.length);
+      const pigEarRMesh  = new THREE.InstancedMesh(pigEarGeom, pigEarMat, pigTiles.length);
+      const pigTailGeom  = new THREE.TorusGeometry(0.038, 0.016, 4, 7, Math.PI * 1.6);
       const pigTailMat   = new THREE.MeshLambertMaterial({ color: 0xdd9a85 });
       const pigTailMesh  = new THREE.InstancedMesh(pigTailGeom, pigTailMat, pigTiles.length);
+      // Four stubby legs
+      const pigLegGeom   = new THREE.CylinderGeometry(0.028, 0.022, 0.14, 5);
+      const pigLegMat    = new THREE.MeshLambertMaterial({ color: 0xd8a494 });
+      const pigLegFLMesh = new THREE.InstancedMesh(pigLegGeom, pigLegMat, pigTiles.length);
+      const pigLegFRMesh = new THREE.InstancedMesh(pigLegGeom, pigLegMat, pigTiles.length);
+      const pigLegBLMesh = new THREE.InstancedMesh(pigLegGeom, pigLegMat, pigTiles.length);
+      const pigLegBRMesh = new THREE.InstancedMesh(pigLegGeom, pigLegMat, pigTiles.length);
       const instances = pigTiles.map((tile) => {
         const ox = (this._rng(tile.x, tile.z, 41) - 0.5) * 0.95;
         const oz = (this._rng(tile.x, tile.z, 42) - 0.5) * 0.95;
         const seed = this._rng(tile.x, tile.z, 43) * Math.PI * 2;
+        const sr = this._rng(tile.x, tile.z, 44);
+        // 30% piglets, 50% normal pigs, 20% big boars
+        const s = sr < 0.30 ? 0.50 + sr * 0.2 : sr < 0.80 ? 1.00 : 1.32 + (sr - 0.80) * 0.4;
         const tx = tile.x + 0.5 + ox * 0.5;
         const tz = tile.z + 0.5 + oz * 0.5;
         return {
           x: tx, z: tz, targetX: tx, targetZ: tz,
           homeX: tile.x, homeZ: tile.z,
-          baseY: surfY(TileType.GRASS) + 0.17,
-          scale: [1.1, 0.85, 1.2],
-          headScale: [0.95, 1.05, 0.9],
-          snoutScale: [1, 1, 1],
+          baseY: surfY(TileType.GRASS) + 0.22 * s,
+          scale: [1.20 * s, 0.72 * s, 1.05 * s],
+          headScale: [0.88 * s, 0.88 * s, 1.00 * s],
+          snoutScale: [s, s, s],
+          pigSize: s,
           rotY: seed, seed,
         };
       });
       pigMesh.castShadow = true;
       pigHeadMesh.castShadow = true;
       pigSnoutMesh.castShadow = true;
-      pigEarMesh.castShadow = true;
+      pigEarLMesh.castShadow = true;
+      pigEarRMesh.castShadow = true;
       addAnimated(pigMesh, instances, pigGrazeConfig, [
-        { mesh: pigHeadMesh, offset: 0.22, useHeadScale: true },
-        { mesh: pigSnoutMesh, offset: 0.36, snout: true, useSnoutScale: true },
-        { mesh: pigEarMesh,  offset: 0.2,  ears: true, yOffset: 0.06 },
-        { mesh: pigTailMesh, offset: -0.22, tail: true },
+        { mesh: pigHeadMesh,  offset: 0.22,  useHeadScale: true },
+        { mesh: pigSnoutMesh, offset: 0.34,  snout: true, useSnoutScale: true },
+        { mesh: pigEarLMesh,  pigEarL: true },
+        { mesh: pigEarRMesh,  pigEarR: true },
+        { mesh: pigTailMesh,  offset: -0.20, tail: true },
+        { mesh: pigLegFLMesh, pigLegFL: true },
+        { mesh: pigLegFRMesh, pigLegFR: true },
+        { mesh: pigLegBLMesh, pigLegBL: true },
+        { mesh: pigLegBRMesh, pigLegBR: true },
       ]);
     }
 
@@ -1382,6 +1361,92 @@ export class TerrainRenderer {
       addAnimated(bodyMesh, crabInstances, crabConfig, [
         { mesh: clawLMesh, crabClawL: true },
         { mesh: clawRMesh, crabClawR: true },
+      ]);
+    }
+
+    // ── Single Golden Frog ─────────────────────────────────────────────────
+    const grassTilesForFrog = (buckets[TileType.GRASS] ?? []).filter(t =>
+      this.world.hasAdjacentType(t.x, t.z, TileType.WATER) ||
+      this.world.hasAdjacentType(t.x, t.z, TileType.BEACH)
+    );
+    const frogSpawnPool = grassTilesForFrog.length > 0
+      ? grassTilesForFrog
+      : (buckets[TileType.BEACH] ?? []);
+    if (frogSpawnPool.length > 0) {
+      const fIdx = Math.floor(frogSpawnPool.length * 0.61) % frogSpawnPool.length;
+      const fTile = frogSpawnPool[fIdx];
+
+      // Body: squished sphere (wide, flat — classic frog silhouette)
+      const frogBodyGeom = new THREE.SphereGeometry(0.09, 8, 6);
+      frogBodyGeom.scale(1.2, 0.7, 1.0);
+      const frogBodyMat = new THREE.MeshStandardMaterial({
+        color: 0xFFD700, metalness: 0.55, roughness: 0.28,
+      });
+      const frogBodyMesh = new THREE.InstancedMesh(frogBodyGeom, frogBodyMat, 1);
+
+      // Eyes: two small golden spheres on top
+      const frogEyeGeom = new THREE.SphereGeometry(0.032, 6, 5);
+      const frogEyeMat = new THREE.MeshStandardMaterial({
+        color: 0xFFE566, metalness: 0.6, roughness: 0.2,
+      });
+      const frogEyeLMesh = new THREE.InstancedMesh(frogEyeGeom, frogEyeMat, 1);
+      const frogEyeRMesh = new THREE.InstancedMesh(frogEyeGeom, frogEyeMat, 1);
+
+      // Eye pupils: tiny dark spheres
+      const pupilGeom = new THREE.SphereGeometry(0.016, 5, 4);
+      const pupilMat = new THREE.MeshLambertMaterial({ color: 0x1a0a00 });
+      const pupilLMesh = new THREE.InstancedMesh(pupilGeom, pupilMat, 1);
+      const pupilRMesh = new THREE.InstancedMesh(pupilGeom, pupilMat, 1);
+
+      // Back legs: flattened cylinders
+      const frogLegGeom = new THREE.CylinderGeometry(0.018, 0.014, 0.09, 5);
+      const frogLegMat = new THREE.MeshStandardMaterial({
+        color: 0xFFBB00, metalness: 0.45, roughness: 0.35,
+      });
+      const frogLegLMesh = new THREE.InstancedMesh(frogLegGeom, frogLegMat, 1);
+      const frogLegRMesh = new THREE.InstancedMesh(frogLegGeom, frogLegMat, 1);
+
+      const fox = (this._rng(fTile.x, fTile.z, 95) - 0.5) * 0.6;
+      const foz = (this._rng(fTile.x, fTile.z, 96) - 0.5) * 0.6;
+      const fseed = this._rng(fTile.x, fTile.z, 97) * Math.PI * 2;
+      const ftx = fTile.x + 0.5 + fox * 0.5;
+      const ftz = fTile.z + 0.5 + foz * 0.5;
+      const frogInstances = [{
+        x: ftx, z: ftz, targetX: ftx, targetZ: ftz,
+        homeX: fTile.x, homeZ: fTile.z,
+        baseY: surfY(TileType.GRASS) + 0.06,
+        scale: [1, 1, 1],
+        rotY: fseed, seed: fseed,
+      }];
+
+      // Golden sparkles: 12 bright points orbiting the frog
+      const frogSparkleCount = 12;
+      const frogSparklePosArr = new Float32Array(frogSparkleCount * 3);
+      const frogSparkleGeom = new THREE.BufferGeometry();
+      frogSparkleGeom.setAttribute('position', new THREE.BufferAttribute(frogSparklePosArr, 3));
+      const frogSparkleMat = new THREE.PointsMaterial({
+        color: 0xFFD700, size: 0.055, transparent: true, opacity: 0.85, depthWrite: false,
+      });
+      const frogSparklePoints = new THREE.Points(frogSparkleGeom, frogSparkleMat);
+      this.scene.add(frogSparklePoints);
+      this._meshes.push(frogSparklePoints);
+
+      const frogConfig = {
+        label: 'Golden Frog', icon: '🐸',
+        description: 'A rare golden frog shimmering with magic. Only one exists in this world.',
+        driftRadius: 0.05, driftSpeed: 0.8, bobAmount: 0.018, bobSpeed: 3.2,
+        mobile: true, moveSpeed: 0.22, tileTypes: [TileType.GRASS, TileType.BEACH],
+        wanderRadius: 3,
+        sparkle: frogSparklePoints,
+        goldenFrog: true,
+      };
+      addAnimated(frogBodyMesh, frogInstances, frogConfig, [
+        { mesh: frogEyeLMesh,  frogEyeL: true },
+        { mesh: frogEyeRMesh,  frogEyeR: true },
+        { mesh: pupilLMesh,    frogPupilL: true },
+        { mesh: pupilRMesh,    frogPupilR: true },
+        { mesh: frogLegLMesh,  frogLegL: true },
+        { mesh: frogLegRMesh,  frogLegR: true },
       ]);
     }
   }
@@ -1782,6 +1847,38 @@ export class TerrainRenderer {
             dummy.rotation.set(0, ry, 0);
             dummy.updateMatrix();
             part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.frogEyeL || part.frogEyeR) {
+            // Bulging eyes on top of head, spread to sides
+            const side = part.frogEyeL ? -1 : 1;
+            const ex = px + Math.cos(ry) * side * 0.055 + Math.sin(ry) * 0.02;
+            const ez = pz - Math.sin(ry) * side * 0.055 + Math.cos(ry) * 0.02;
+            dummy.position.set(ex, py + 0.065, ez);
+            dummy.scale.set(1, 1, 1);
+            dummy.rotation.set(0, ry, 0);
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.frogPupilL || part.frogPupilR) {
+            // Pupils sit on front face of each eye
+            const side = part.frogPupilL ? -1 : 1;
+            const ex = px + Math.cos(ry) * side * 0.055 + Math.sin(ry) * 0.038;
+            const ez = pz - Math.sin(ry) * side * 0.055 + Math.cos(ry) * 0.038;
+            dummy.position.set(ex, py + 0.068, ez);
+            dummy.scale.set(1, 1, 1);
+            dummy.rotation.set(0, ry, 0);
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.frogLegL || part.frogLegR) {
+            // Back legs tucked out to sides and slightly behind
+            const side = part.frogLegL ? -1 : 1;
+            const lx = px + Math.cos(ry) * side * 0.075 - Math.sin(ry) * 0.055;
+            const lz = pz - Math.sin(ry) * side * 0.075 - Math.cos(ry) * 0.055;
+            dummy.position.set(lx, py - 0.02, lz);
+            dummy.scale.set(1, 1, 1);
+            dummy.rotation.order = 'YXZ';
+            dummy.rotation.y = ry + side * 0.9;
+            dummy.rotation.x = 0.7; // leg angles outward and down
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
           } else if (part.whalePecL || part.whalePecR) {
             // Long humpback pectoral flippers — extend perpendicular to body axis
             const side = part.whalePecL ? 1 : -1;
@@ -1809,6 +1906,33 @@ export class TerrainRenderer {
             dummy.rotation.x = 0.3;
             dummy.updateMatrix();
             part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.pigEarL || part.pigEarR) {
+            // Pig ears: sit on top-sides of the head, slightly forward
+            const ps = inst.pigSize ?? 1;
+            const side = part.pigEarL ? -1 : 1;
+            const ex = px + Math.sin(ry) * 0.18 * ps + Math.cos(ry) * side * 0.068 * ps;
+            const ez = pz + Math.cos(ry) * 0.18 * ps - Math.sin(ry) * side * 0.068 * ps;
+            dummy.position.set(ex, py + 0.12 * ps, ez);
+            dummy.scale.set(ps, ps, ps);
+            dummy.rotation.order = 'YXZ';
+            dummy.rotation.y = ry + side * 0.15;
+            dummy.rotation.x = -0.25;
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.pigLegFL || part.pigLegFR || part.pigLegBL || part.pigLegBR) {
+            // Pig legs: four stubby legs at the corners of the body
+            const ps = inst.pigSize ?? 1;
+            const side = (part.pigLegFL || part.pigLegBL) ? -1 : 1;
+            const fwd  = (part.pigLegFL || part.pigLegFR) ? 0.09 * ps : -0.08 * ps;
+            const lx = px + Math.sin(ry) * fwd + Math.cos(ry) * side * 0.10 * ps;
+            const lz = pz + Math.cos(ry) * fwd - Math.sin(ry) * side * 0.10 * ps;
+            dummy.position.set(lx, py - 0.10 * ps, lz);
+            dummy.scale.set(ps, ps, ps);
+            dummy.rotation.order = 'YXZ';
+            dummy.rotation.y = ry;
+            dummy.rotation.x = 0;
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
           } else {
             const hx = px + Math.sin(ry) * part.offset;
             const hz = pz + Math.cos(ry) * part.offset;
@@ -1825,22 +1949,36 @@ export class TerrainRenderer {
       mesh.instanceMatrix.needsUpdate = true;
       for (const part of parts) part.mesh.instanceMatrix.needsUpdate = true;
 
-      // Hummingbird sparkle: orbit 8 points around hummingbird's current position
+      // Sparkle orbit: orbit points around creature's current position
       if (config.sparkle && instances[0]?._sparkleX !== undefined) {
         const cx = instances[0]._sparkleX;
         const cy = instances[0]._sparkleY;
         const cz = instances[0]._sparkleZ;
         const posArr = config.sparkle.geometry.attributes.position.array;
         const count = posArr.length / 3;
-        for (let si = 0; si < count; si++) {
-          const angle = (si / count) * Math.PI * 2 + t * 2.5;
-          const r = 0.10 + Math.sin(t * 1.8 + si * 0.9) * 0.025;
-          posArr[si * 3 + 0] = cx + Math.cos(angle) * r;
-          posArr[si * 3 + 1] = cy + 0.04 + Math.sin(t * 4 + si * 1.2) * 0.03;
-          posArr[si * 3 + 2] = cz + Math.sin(angle) * r;
+        if (config.goldenFrog) {
+          // Golden frog: wide glittering halo close to the ground, fast twinkle
+          for (let si = 0; si < count; si++) {
+            const angle = (si / count) * Math.PI * 2 + t * 3.8;
+            const r = 0.14 + Math.sin(t * 5.0 + si * 1.1) * 0.04;
+            const yOff = 0.06 + Math.abs(Math.sin(t * 6.2 + si * 2.3)) * 0.10;
+            posArr[si * 3 + 0] = cx + Math.cos(angle) * r;
+            posArr[si * 3 + 1] = cy + yOff;
+            posArr[si * 3 + 2] = cz + Math.sin(angle) * r;
+          }
+          config.sparkle.material.opacity = 0.55 + Math.sin(t * 7.0) * 0.40;
+        } else {
+          // Hummingbird: tight gentle orbit
+          for (let si = 0; si < count; si++) {
+            const angle = (si / count) * Math.PI * 2 + t * 2.5;
+            const r = 0.10 + Math.sin(t * 1.8 + si * 0.9) * 0.025;
+            posArr[si * 3 + 0] = cx + Math.cos(angle) * r;
+            posArr[si * 3 + 1] = cy + 0.04 + Math.sin(t * 4 + si * 1.2) * 0.03;
+            posArr[si * 3 + 2] = cz + Math.sin(angle) * r;
+          }
+          config.sparkle.material.opacity = 0.45 + Math.sin(t * 3.1) * 0.35;
         }
         config.sparkle.geometry.attributes.position.needsUpdate = true;
-        config.sparkle.material.opacity = 0.45 + Math.sin(t * 3.1) * 0.35;
       }
     }
   }

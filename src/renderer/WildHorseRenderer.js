@@ -100,7 +100,6 @@ export class WildHorseRenderer {
       mane.position.set(0, 0.33, -0.46);
       mane.castShadow = true;
       this._geoms.push(mane.geometry);
-
       // ── Head ─────────────────────────────────────────────────
       // Group so the elongated head can tilt naturally
       const headGroup = new THREE.Group();

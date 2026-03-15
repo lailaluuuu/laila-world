@@ -217,7 +217,7 @@ export class WorldRenderer {
     if (this._ssProgress >= 1) {
       this._ssActive = false;
       this._shootingStarLine.visible = false;
-      this._ssNextAt = _now + 18 + Math.random() * 38;
+      this._ssNextAt = _now + 5 + Math.random() * 10;
       return;
     }
 

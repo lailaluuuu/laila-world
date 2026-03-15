@@ -2,7 +2,7 @@ import { TileType } from './World.js';
 
 let nextId = 1;
 
-const AGENT_SPEED     = 1.8;   // tiles/sec
+const AGENT_SPEED     = 0.42;  // tiles/sec — sheep amble slowly
 const HUNGER_DRAIN    = 1 / 90; // full → empty in 90 game-sec
 const ENERGY_DRAIN    = 1 / 200;
 const ENERGY_RECOVER  = 1 / 20;
@@ -15,6 +15,7 @@ export const AgentState = {
   SLEEPING:    'sleeping',
   SOCIALIZING: 'socializing',
   DISCOVERING: 'discovering',
+  FISHING:     'fishing',
 };
 
 export class Agent {
@@ -40,6 +41,7 @@ export class Agent {
     this.maxAge     = 60 + Math.random() * 60; // game-seconds (die of old age)
 
     this.restTimer    = 0;
+    this.grazeTimer   = Math.random() * 3; // sheep pause to graze after arriving
     this.discoveryFlash = 0;  // countdown for glow effect (game-sec)
     this.socialTimer  = Math.random() * SOCIAL_COOLDOWN;
 
@@ -58,12 +60,6 @@ export class Agent {
     /** Task role (gatherer, teacher, scout, carer) — set when Organisation is discovered */
     this.task = null;
 
-    /** Romantic attraction: agentId → cumulative score (adults only) */
-    this.attraction = new Map();
-    /** The agent this one is in love with, or null */
-    this.partner = null;
-    /** Game-sec penalty to sleep recovery after partner dies */
-    this.heartbreakTimer = 0;
 
     /** How often the agent re-evaluates its needs even mid-wander (game-sec) */
     this._needsCheckTimer = 2 + Math.random() * 3;
@@ -76,6 +72,11 @@ export class Agent {
     this.speechBubble = null;
     /** How many game-seconds the bubble stays visible */
     this.speechBubbleTimer = 0;
+
+    /** Fishing session countdown (game-sec); active while state === FISHING */
+    this.fishingTimer = 0;
+    /** Set to true when walking to a fishing spot so _onArrival knows to start a session */
+    this._fishingTrip = false;
   }
 
   static get TASKS() {
@@ -136,11 +137,6 @@ export class Agent {
     // Maturity
     if (!this.isAdult && this.age >= 20) this.isAdult = true;
     if (this.reproductionCooldown > 0) this.reproductionCooldown -= delta;
-    if (this.heartbreakTimer > 0) this.heartbreakTimer -= delta;
-    if (this.partner && this.partner.health <= 0) {
-      this.partner = null;
-      this.heartbreakTimer = 20;
-    }
 
     // Weather protection: fire, shelter, and clothing reduce harsh-weather energy penalty
     let envMult = weatherMult;
@@ -196,10 +192,26 @@ export class Agent {
       if (this.knowledge.has('church')) sleepMult *= 1.04;
       const taskRestBonus = this.task && Agent.TASKS[this.task]?.restBonus ? Agent.TASKS[this.task].restBonus : 1.0;
       sleepMult *= taskRestBonus;
-      const heartbreakPenalty = this.heartbreakTimer > 0 ? 0.75 : 1.0;
-      this.needs.energy = Math.min(1, this.needs.energy + ENERGY_RECOVER * delta * 1.4 * sleepMult * heartbreakPenalty);
+      this.needs.energy = Math.min(1, this.needs.energy + ENERGY_RECOVER * delta * 1.4 * sleepMult);
       this.restTimer -= delta;
       if (this.restTimer <= 0) {
+        this.state = AgentState.WANDERING;
+        this._pickWanderTarget(world, allAgents);
+      }
+      this._trySocialise(delta, allAgents, conceptGraph);
+      return;
+    }
+
+    // ── Fishing: sit at water's edge until the catch comes in ────────────
+    if (this.state === AgentState.FISHING) {
+      this.fishingTimer -= delta;
+      if (this.fishingTimer <= 0) {
+        let yield_ = 0.5;
+        if (this.knowledge.has('stone_tools')) yield_ *= 1.2;
+        if (this.knowledge.has('metal_tools')) yield_ *= 1.25;
+        if (this.knowledge.has('cooking'))     yield_ *= 1.5;
+        if (this.knowledge.has('pottery'))     yield_ *= 1.1;
+        this.needs.hunger = Math.min(1.0, this.needs.hunger + yield_);
         this.state = AgentState.WANDERING;
         this._pickWanderTarget(world, allAgents);
       }
@@ -214,6 +226,18 @@ export class Agent {
       if (this.state === AgentState.WANDERING || this.state === AgentState.DISCOVERING) {
         this._decideAction(world, allAgents);
       }
+    }
+
+    // ── Graze pause: sheep stops and grazes before moving on ─────────
+    if (this.grazeTimer > 0) {
+      this.grazeTimer -= delta;
+      this._needsCheckTimer -= delta;
+      if (this._needsCheckTimer <= 0) {
+        this._needsCheckTimer = 3 + Math.random() * 4;
+        this._decideAction(world, allAgents); // hunger/tiredness can cut grazing short
+      }
+      this._trySocialise(delta, allAgents, conceptGraph);
+      return;
     }
 
     // ── Move toward target ────────────────────────────────────────────
@@ -249,6 +273,14 @@ export class Agent {
 
   _onArrival(world, allAgents, conceptGraph) {
     if (!allAgents) allAgents = [];
+    // Fishing arrival: begin the fishing session
+    if (this.state === AgentState.GATHERING && this._fishingTrip) {
+      this._fishingTrip = false;
+      this.state = AgentState.FISHING;
+      this.fishingTimer = 3 + Math.random() * 4;
+      return;
+    }
+
     // Eating: arriving at food tile satisfies hunger
     if (this.state === AgentState.GATHERING) {
       const tile = world.getTile(Math.floor(this.x), Math.floor(this.z));
@@ -289,6 +321,11 @@ export class Agent {
         this._hasFlint = true;
       }
     }
+    // After wandering to a spot, graze for a while before picking next target
+    if (this.state === AgentState.WANDERING && Math.random() < 0.88) {
+      this.grazeTimer = 4 + Math.random() * 8;
+      return;
+    }
     this._decideAction(world, allAgents);
   }
 
@@ -298,15 +335,17 @@ export class Agent {
     const restThreshold   = taskDef?.restThreshold   ?? 0.2;
     const envMult = this._lastWeatherMult ?? 1.0;
 
-    // Critical hunger — immediately seek food
+    // Critical hunger — immediately seek food (clears any grazing)
     if (this.needs.hunger < gatherThreshold) {
+      this.grazeTimer = 0;
       this.state = AgentState.GATHERING;
       this._pickGatherTarget(world);
       return;
     }
 
-    // Low energy — rest
+    // Low energy — rest (clears any grazing)
     if (this.needs.energy < restThreshold) {
+      this.grazeTimer = 0;
       this.state = AgentState.SLEEPING;
       this.restTimer = 10 + Math.random() * 8;
       return;
@@ -352,21 +391,29 @@ export class Agent {
   _pickWanderTarget(world, allAgents = []) {
     const taskDef = this.task ? Agent.TASKS[this.task] : null;
     const radiusBonus = taskDef?.wanderRadiusBonus ?? 0;
-    let radius = 4 + Math.floor(this.curiosity * 4) + radiusBonus;
+    let radius = 2 + Math.floor(this.curiosity * 2) + radiusBonus;
 
-    // Partner: seek them out with 35% probability
-    if (this.partner && this.partner.health > 0 && Math.random() < 0.35) {
-      const dx = this.partner.x - this.x;
-      const dz = this.partner.z - this.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist > 2) {
-        const step = Math.min(radius, dist * 0.7);
-        const tx = Math.floor(this.x + (dx / dist) * step + (Math.random() - 0.5) * 2);
-        const tz = Math.floor(this.z + (dz / dist) * step + (Math.random() - 0.5) * 2);
-        if (world.canTraverse(tx, tz, this.knowledge)) {
-          this.targetX = tx + 0.5;
-          this.targetZ = tz + 0.5;
-          return;
+    // Flock: all agents have a chance to drift toward a nearby peer
+    if (allAgents.length > 1 && Math.random() < 0.30) {
+      const others = allAgents.filter(a => a !== this && a.health > 0);
+      if (others.length > 0) {
+        // Pick a random nearby agent to drift toward
+        const nearby = others.filter(a => Math.hypot(a.x - this.x, a.z - this.z) < 12);
+        const pick = nearby.length > 0 ? nearby[Math.floor(Math.random() * nearby.length)] : null;
+        if (pick) {
+          const ddx = pick.x - this.x;
+          const ddz = pick.z - this.z;
+          const dd = Math.hypot(ddx, ddz);
+          if (dd > 2) {
+            const step = Math.min(radius, dd * 0.5);
+            const tx = Math.floor(this.x + (ddx / dd) * step);
+            const tz = Math.floor(this.z + (ddz / dd) * step);
+            if (world.canTraverse(tx, tz, this.knowledge)) {
+              this.targetX = tx + 0.5;
+              this.targetZ = tz + 0.5;
+              return;
+            }
+          }
         }
       }
     }
@@ -411,6 +458,16 @@ export class Agent {
   _pickGatherTarget(world) {
     const cx = Math.floor(this.x);
     const cz = Math.floor(this.z);
+    if (this.knowledge.has('fishing') && Math.random() < 0.45) {
+      const fishTile = this._pickFishingTarget(world);
+      if (fishTile) {
+        this.targetX = fishTile.x + 0.5;
+        this.targetZ = fishTile.z + 0.5;
+        this._fishingTrip = true;
+        return;
+      }
+    }
+    this._fishingTrip = false;
     const tile = world.findNearest(cx, cz, [TileType.GRASS, TileType.FOREST], 8);
     if (tile) {
       this.targetX = tile.x + 0.5;
@@ -418,6 +475,29 @@ export class Agent {
     } else {
       this._pickWanderTarget(world);
     }
+  }
+
+  _pickFishingTarget(world) {
+    const cx = Math.floor(this.x);
+    const cz = Math.floor(this.z);
+    const r = 10;
+    let best = null;
+    let bestDist = Infinity;
+    for (let dz = -r; dz <= r; dz++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const dist = Math.hypot(dx, dz);
+        if (dist > r) continue;
+        const tile = world.getTile(cx + dx, cz + dz);
+        if (!tile) continue;
+        const isBeach = tile.type === TileType.BEACH;
+        const isWaterEdge = tile.type === TileType.GRASS &&
+          world.hasAdjacentType(tile.x, tile.z, TileType.WATER);
+        if ((isBeach || isWaterEdge) && world.canTraverse(tile.x, tile.z, this.knowledge)) {
+          if (dist < bestDist) { bestDist = dist; best = tile; }
+        }
+      }
+    }
+    return best;
   }
 
   /** Find nearest tile with herbs or mushrooms within radius 10. Returns the tile or null. */
@@ -484,19 +564,6 @@ export class Agent {
           this.speechBubbleTimer = 2.0 + Math.random();
         }
         if (dist < 3.5) this._tryReproduce(other, conceptGraph);
-
-        // Build romantic attraction between uncoupled adults
-        if (this.isAdult && other.isAdult && !this.partner && !other.partner) {
-          const myAtt    = (this.attraction.get(other.id)  ?? 0) + 0.4 + Math.random() * 0.35;
-          const theirAtt = (other.attraction.get(this.id)  ?? 0) + 0.4 + Math.random() * 0.35;
-          this.attraction.set(other.id,  myAtt);
-          other.attraction.set(this.id, theirAtt);
-          if (myAtt >= 4.0 && theirAtt >= 2.0) {
-            this.partner  = other;
-            other.partner = this;
-            conceptGraph.loveEvents.push({ name1: this.name, name2: other.name, x: (this.x + other.x) / 2, z: (this.z + other.z) / 2 });
-          }
-        }
       }
     }
   }
@@ -506,16 +573,12 @@ export class Agent {
   _tryReproduce(other, conceptGraph) {
     if (!this.isAdult || !other.isAdult) return;
     if (this.reproductionCooldown > 0 || other.reproductionCooldown > 0) return;
-    const isPartners = this.partner === other;
-    const hungerThreshold = isPartners ? 0.30 : 0.40;
-    const energyThreshold = isPartners ? 0.15 : 0.20;
-    if (this.needs.hunger < hungerThreshold || other.needs.hunger < hungerThreshold) return;
-    if (this.needs.energy < energyThreshold || other.needs.energy < energyThreshold) return;
+    if (this.needs.hunger < 0.40 || other.needs.hunger < 0.40) return;
+    if (this.needs.energy < 0.20 || other.needs.energy < 0.20) return;
 
     const baseCooldown = 18 + Math.random() * 20;
     const communityMult = (this.knowledge.has('community') || other.knowledge.has('community')) ? 0.82 : 1.0;
-    const partnerMult = isPartners ? 0.75 : 1.0;
-    const cooldown = baseCooldown * communityMult * partnerMult;
+    const cooldown = baseCooldown * communityMult;
     this.reproductionCooldown  = cooldown;
     other.reproductionCooldown = cooldown;
 

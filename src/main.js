@@ -9,6 +9,7 @@ import { BuildingRenderer }  from './renderer/BuildingRenderer.js';
 import { WildHorse }         from './simulation/WildHorse.js';
 import { WildHorseRenderer } from './renderer/WildHorseRenderer.js';
 import { ButterflyRenderer } from './renderer/ButterflyRenderer.js';
+import { BeeRenderer }       from './renderer/BeeRenderer.js';
 import { TimeSystem }        from './systems/TimeSystem.js';
 import { WeatherSystem }     from './systems/WeatherSystem.js';
 
@@ -62,6 +63,7 @@ async function init() {
   let horses = [];
   let horseRenderer;
   let butterflyRenderer;
+  let beeRenderer;
   try {
   world = new World();
   world.naturalFires = new Map();
@@ -76,6 +78,7 @@ async function init() {
   horses = world.getWildHorseSpawnPoints(WILD_HORSE_COUNT).map(p => new WildHorse(p.x, p.z));
   horseRenderer = new WildHorseRenderer(wr.scene, horses, world);
   butterflyRenderer = new ButterflyRenderer(wr.scene, world);
+  beeRenderer = new BeeRenderer(wr.scene, world);
   buildingRenderer = new BuildingRenderer(wr.scene, world);
 
   time = new TimeSystem();
@@ -167,6 +170,7 @@ async function init() {
     ar.dispose();
     horseRenderer.dispose();
     butterflyRenderer.dispose();
+    beeRenderer.dispose();
     buildingRenderer.dispose();
 
     world = new World();
@@ -183,6 +187,7 @@ async function init() {
     world.getWildHorseSpawnPoints(WILD_HORSE_COUNT).forEach(p => horses.push(new WildHorse(p.x, p.z)));
     horseRenderer = new WildHorseRenderer(wr.scene, horses, world);
     butterflyRenderer = new ButterflyRenderer(wr.scene, world);
+    beeRenderer = new BeeRenderer(wr.scene, world);
     buildingRenderer = new BuildingRenderer(wr.scene, world);
 
     time.gameTime = (8 / 24) * 120; // reset to 08:00
@@ -490,7 +495,6 @@ async function init() {
           <span style="font-size:11px;opacity:.5">${(agent.curiosity * 100).toFixed(0)}%</span>
         </div>
         ${agent.task ? `<div class="info-row"><span class="info-label">Task</span><span class="info-tag">${Agent.TASKS[agent.task]?.icon ?? '•'} ${Agent.TASKS[agent.task]?.name ?? agent.task}</span></div>` : ''}
-        ${agent.partner && agent.partner.health > 0 ? `<div class="info-row"><span class="info-label">❤️ Love</span><span style="font-size:11px;opacity:.7">${agent.partner.name}</span></div>` : ''}
       </div>
       ${concepts ? `<div class="info-tags">${concepts}</div>` : '<div style="opacity:.3;font-size:12px;margin-top:10px">No discoveries yet</div>'}
     `;
@@ -593,7 +597,7 @@ async function init() {
       }
 
       const wMult = weather.energyDrainMult;
-      for (const h of horses) h.tick(delta, world);
+      for (const h of horses) h.tick(delta, world, horses);
       for (const agent of agents) {
         if (agent?.health > 0) {
           try {
@@ -672,11 +676,7 @@ async function init() {
         showNotification(`${evt.parentName} has a child — ${child.name}`, 'social');
       }
 
-      // Handle love events
-      for (const evt of conceptGraph.drainLoveEvents()) {
-        showNotification(`💕 ${evt.name1} and ${evt.name2} fell in love!`, 'social');
-        wr.addFlash(evt.x * 2, evt.z * 2, 0xff6b9d);
-      }
+
     }
 
     // Rendering always runs (for smooth camera)
@@ -691,6 +691,7 @@ async function init() {
     ar.update(wr.camera);
     horseRenderer.update();
     butterflyRenderer.update(delta > 0 ? delta : 0, weather.current === 'CLEAR');
+    beeRenderer.update(delta > 0 ? delta : 0, weather.current === 'CLEAR');
     buildingRenderer.checkAgents(agents);
     wr.updateRain(realDelta, weather.isRaining, weather.isStorm);
     wr.render();

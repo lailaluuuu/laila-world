@@ -50,7 +50,7 @@ export class WildHorse {
     this.turnRate = 2.2 + Math.random() * 2.2;
     this.walkSpeed = 0.55 + Math.random() * 0.2;
     this.runSpeed = 1.65 + Math.random() * 0.45;
-    this.idleChance = 0.35 + Math.random() * 0.25;
+    this.idleChance = 0.55 + Math.random() * 0.20;
     this.wanderR0 = WANDER_RADIUS_MIN + Math.floor(Math.random() * 3);
     this.wanderR1 = WANDER_RADIUS_MAX;
 
@@ -66,9 +66,29 @@ export class WildHorse {
     this.rider = null;
   }
 
-  _pickTarget(world) {
+  _pickTarget(world, herd = []) {
     const cx = Math.floor(this.x);
     const cz = Math.floor(this.z);
+
+    // 40% chance to move toward another horse — forms loose herds
+    if (herd.length > 1 && Math.random() < 0.40) {
+      const others = herd.filter(h => h !== this);
+      const target = others[Math.floor(Math.random() * others.length)];
+      const dist = Math.hypot(target.x - this.x, target.z - this.z);
+      // Only flock if the other horse is not already right next to us
+      if (dist > 2.5) {
+        const ang = Math.atan2(target.z - this.z, target.x - this.x);
+        const spread = (Math.random() - 0.5) * 2.5; // land near but not on top
+        const tx = Math.floor(target.x + Math.cos(ang + spread) * 1.5);
+        const tz = Math.floor(target.z + Math.sin(ang + spread) * 1.5);
+        if (horseTileOk(world, tx, tz)) {
+          this.targetX = tx + 0.5;
+          this.targetZ = tz + 0.5;
+          return;
+        }
+      }
+    }
+
     const r =
       this.wanderR0 +
       Math.floor(Math.random() * (this.wanderR1 - this.wanderR0 + 1));
@@ -93,7 +113,7 @@ export class WildHorse {
     else this.gait = 'walk';
   }
 
-  tick(delta, world) {
+  tick(delta, world, herd = []) {
     this._retargetIn -= delta;
     this._jumpCooldown = Math.max(0, this._jumpCooldown - delta);
 
@@ -132,7 +152,7 @@ export class WildHorse {
       this._idleLeft -= delta;
       this.gallopPhase += delta * 0.8;
       if (this._idleLeft <= 0 || this._retargetIn <= 0) {
-        this._pickTarget(world);
+        this._pickTarget(world, herd);
         const d = Math.hypot(this.targetX - this.x, this.targetZ - this.z);
         this._chooseGaitForDistance(d);
         this._retargetIn = RETARGET_BASE + Math.random() * 5;
@@ -147,9 +167,9 @@ export class WildHorse {
     if (dist < REACH_DIST || this._retargetIn <= 0) {
       if (Math.random() < this.idleChance) {
         this.gait = 'idle';
-        this._idleLeft = 1 + Math.random() * 2.5;
+        this._idleLeft = 3 + Math.random() * 7; // graze for 3–10 seconds
       } else {
-        this._pickTarget(world);
+        this._pickTarget(world, herd);
         const d = Math.hypot(this.targetX - this.x, this.targetZ - this.z);
         this._chooseGaitForDistance(d);
       }
@@ -176,7 +196,7 @@ export class WildHorse {
       this.x = nx;
       this.z = nz;
     } else {
-      this._pickTarget(world);
+      this._pickTarget(world, herd);
       this._chooseGaitForDistance(
         Math.hypot(this.targetX - this.x, this.targetZ - this.z),
       );
