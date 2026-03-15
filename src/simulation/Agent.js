@@ -58,12 +58,24 @@ export class Agent {
     /** Task role (gatherer, teacher, scout, carer) — set when Organisation is discovered */
     this.task = null;
 
+    /** Romantic attraction: agentId → cumulative score (adults only) */
+    this.attraction = new Map();
+    /** The agent this one is in love with, or null */
+    this.partner = null;
+    /** Game-sec penalty to sleep recovery after partner dies */
+    this.heartbreakTimer = 0;
+
     /** How often the agent re-evaluates its needs even mid-wander (game-sec) */
     this._needsCheckTimer = 2 + Math.random() * 3;
     /** Store last weatherMult so _decideAction can consider it */
     this._lastWeatherMult = 1.0;
     /** Cooldown before this agent can light another campfire (game-sec) */
     this._fireCooldown = 20 + Math.random() * 20;
+
+    /** Speech bubble: text to show above agent, or null */
+    this.speechBubble = null;
+    /** How many game-seconds the bubble stays visible */
+    this.speechBubbleTimer = 0;
   }
 
   static get TASKS() {
@@ -124,6 +136,11 @@ export class Agent {
     // Maturity
     if (!this.isAdult && this.age >= 20) this.isAdult = true;
     if (this.reproductionCooldown > 0) this.reproductionCooldown -= delta;
+    if (this.heartbreakTimer > 0) this.heartbreakTimer -= delta;
+    if (this.partner && this.partner.health <= 0) {
+      this.partner = null;
+      this.heartbreakTimer = 20;
+    }
 
     // Weather protection: fire, shelter, and clothing reduce harsh-weather energy penalty
     let envMult = weatherMult;
@@ -149,6 +166,10 @@ export class Agent {
     }
     if (this.discoveryFlash > 0) this.discoveryFlash -= delta;
     if (this._fireCooldown > 0) this._fireCooldown -= delta;
+    if (this.speechBubbleTimer > 0) {
+      this.speechBubbleTimer -= delta;
+      if (this.speechBubbleTimer <= 0) this.speechBubble = null;
+    }
 
     // Store for use in _decideAction
     this._lastWeatherMult = envMult;
@@ -175,7 +196,8 @@ export class Agent {
       if (this.knowledge.has('church')) sleepMult *= 1.04;
       const taskRestBonus = this.task && Agent.TASKS[this.task]?.restBonus ? Agent.TASKS[this.task].restBonus : 1.0;
       sleepMult *= taskRestBonus;
-      this.needs.energy = Math.min(1, this.needs.energy + ENERGY_RECOVER * delta * 1.4 * sleepMult);
+      const heartbreakPenalty = this.heartbreakTimer > 0 ? 0.75 : 1.0;
+      this.needs.energy = Math.min(1, this.needs.energy + ENERGY_RECOVER * delta * 1.4 * sleepMult * heartbreakPenalty);
       this.restTimer -= delta;
       if (this.restTimer <= 0) {
         this.state = AgentState.WANDERING;
@@ -332,6 +354,23 @@ export class Agent {
     const radiusBonus = taskDef?.wanderRadiusBonus ?? 0;
     let radius = 4 + Math.floor(this.curiosity * 4) + radiusBonus;
 
+    // Partner: seek them out with 35% probability
+    if (this.partner && this.partner.health > 0 && Math.random() < 0.35) {
+      const dx = this.partner.x - this.x;
+      const dz = this.partner.z - this.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > 2) {
+        const step = Math.min(radius, dist * 0.7);
+        const tx = Math.floor(this.x + (dx / dist) * step + (Math.random() - 0.5) * 2);
+        const tz = Math.floor(this.z + (dz / dist) * step + (Math.random() - 0.5) * 2);
+        if (world.canTraverse(tx, tz, this.knowledge)) {
+          this.targetX = tx + 0.5;
+          this.targetZ = tz + 0.5;
+          return;
+        }
+      }
+    }
+
     // Teacher: bias toward other agents to share knowledge
     if (taskDef?.seekSocial && allAgents.length > 1) {
       const others = allAgents.filter(a => a !== this && a.health > 0);
@@ -439,7 +478,25 @@ export class Agent {
       const dist = Math.hypot(this.x - other.x, this.z - other.z);
       if (dist < 5.0) {
         conceptGraph.trySpread(this, other, SOCIAL_COOLDOWN);
+        // Show a speech bubble only if this agent knows language
+        if (this.knowledge.has('language') && !this.speechBubble && Math.random() < 0.4) {
+          this.speechBubble = '💬';
+          this.speechBubbleTimer = 2.0 + Math.random();
+        }
         if (dist < 3.5) this._tryReproduce(other, conceptGraph);
+
+        // Build romantic attraction between uncoupled adults
+        if (this.isAdult && other.isAdult && !this.partner && !other.partner) {
+          const myAtt    = (this.attraction.get(other.id)  ?? 0) + 0.4 + Math.random() * 0.35;
+          const theirAtt = (other.attraction.get(this.id)  ?? 0) + 0.4 + Math.random() * 0.35;
+          this.attraction.set(other.id,  myAtt);
+          other.attraction.set(this.id, theirAtt);
+          if (myAtt >= 4.0 && theirAtt >= 2.0) {
+            this.partner  = other;
+            other.partner = this;
+            conceptGraph.loveEvents.push({ name1: this.name, name2: other.name, x: (this.x + other.x) / 2, z: (this.z + other.z) / 2 });
+          }
+        }
       }
     }
   }
@@ -449,12 +506,16 @@ export class Agent {
   _tryReproduce(other, conceptGraph) {
     if (!this.isAdult || !other.isAdult) return;
     if (this.reproductionCooldown > 0 || other.reproductionCooldown > 0) return;
-    if (this.needs.hunger < 0.40 || other.needs.hunger < 0.40) return;
-    if (this.needs.energy < 0.20 || other.needs.energy < 0.20) return;
+    const isPartners = this.partner === other;
+    const hungerThreshold = isPartners ? 0.30 : 0.40;
+    const energyThreshold = isPartners ? 0.15 : 0.20;
+    if (this.needs.hunger < hungerThreshold || other.needs.hunger < hungerThreshold) return;
+    if (this.needs.energy < energyThreshold || other.needs.energy < energyThreshold) return;
 
     const baseCooldown = 18 + Math.random() * 20;
     const communityMult = (this.knowledge.has('community') || other.knowledge.has('community')) ? 0.82 : 1.0;
-    const cooldown = baseCooldown * communityMult;
+    const partnerMult = isPartners ? 0.75 : 1.0;
+    const cooldown = baseCooldown * communityMult * partnerMult;
     this.reproductionCooldown  = cooldown;
     other.reproductionCooldown = cooldown;
 

@@ -11,6 +11,9 @@ export class ConceptGraph {
 
     /** Birth events: { x, z, parentName } */
     this.birthEvents = [];
+
+    /** Love events: { name1, name2, x, z } */
+    this.loveEvents = [];
   }
 
   // ── Discovery ─────────────────────────────────────────────────────────
@@ -137,6 +140,13 @@ export class ConceptGraph {
   drainBirthEvents() {
     const evts = this.birthEvents;
     this.birthEvents = [];
+    return evts;
+  }
+
+  /** Drain and return all queued love events since last call */
+  drainLoveEvents() {
+    const evts = this.loveEvents;
+    this.loveEvents = [];
     return evts;
   }
 }

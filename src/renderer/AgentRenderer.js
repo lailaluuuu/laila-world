@@ -12,6 +12,8 @@ const STATE_COLOR = {
   [AgentState.DISCOVERING]: new THREE.Color(0xfb923c),
 };
 
+const LOVE_SOCIALIZING_COLOR = new THREE.Color(0xff6b9d);
+
 const DEAD_COLOR = new THREE.Color(0x2a2a2a);
 
 // Six varied skin tones, assigned round-robin by agent ID
@@ -23,6 +25,14 @@ export class AgentRenderer {
     this.agents = agents;
     this.world  = world;
     this.meshes = [];
+
+    // Speech bubble DOM overlay
+    this._bubbleContainer = document.createElement('div');
+    this._bubbleContainer.id = 'speech-bubbles';
+    document.body.appendChild(this._bubbleContainer);
+    /** Map<agentId, HTMLElement> */
+    this._bubbleEls = new Map();
+
     this._build();
   }
 
@@ -32,6 +42,9 @@ export class AgentRenderer {
     this._headGeom = new THREE.SphereGeometry(0.155, 8, 7);
     this._eyeGeom  = new THREE.SphereGeometry(0.038, 5, 4);
     this._eyeMat   = new THREE.MeshStandardMaterial({ color: 0x111122, roughness: 0.5 });
+
+    // Shared heart geometry — used for love indicator above agents
+    this._heartGeom = new THREE.SphereGeometry(0.13, 6, 6);
 
     // Shared boat geometries
     this._boatHullGeom = new THREE.BoxGeometry(0.70, 0.11, 0.32);
@@ -103,12 +116,23 @@ export class AgentRenderer {
     const boatGroup = this._buildBoat();
     boatGroup.visible = false;
 
+    // Heart orb — glows pink when partner is nearby
+    const heartMat = new THREE.MeshStandardMaterial({
+      color: 0xff6b9d,
+      emissive: new THREE.Color(0xff2266),
+      emissiveIntensity: 0.7,
+      transparent: true,
+      opacity: 0,
+    });
+    const heartMesh = new THREE.Mesh(this._heartGeom, heartMat);
+    heartMesh.position.set(0, 0.72, 0);
+
     const group = new THREE.Group();
-    group.add(body, head, eyeL, eyeR, boatGroup);
+    group.add(body, head, eyeL, eyeR, boatGroup, heartMesh);
     group.userData.agentId = agent.id;
 
     this.scene.add(group);
-    this.meshes.push({ group, body, bodyMat, headMat, boatGroup, agent });
+    this.meshes.push({ group, body, bodyMat, headMat, boatGroup, heartMesh, heartMat, agent });
   }
 
   /** Call this when a new agent is born at runtime */
@@ -118,15 +142,17 @@ export class AgentRenderer {
 
   /** Remove all agent meshes and free GPU memory */
   dispose() {
-    for (const { group, bodyMat, headMat } of this.meshes) {
+    for (const { group, bodyMat, headMat, heartMat } of this.meshes) {
       this.scene.remove(group);
       bodyMat.dispose();
       headMat.dispose();
+      heartMat?.dispose();
     }
     this._bodyGeom.dispose();
     this._headGeom.dispose();
     this._eyeGeom.dispose();
     this._eyeMat.dispose();
+    this._heartGeom.dispose();
     this._boatHullGeom.dispose();
     this._boatMastGeom.dispose();
     this._sailGeom.dispose();
@@ -137,9 +163,12 @@ export class AgentRenderer {
     this._ring.geometry.dispose();
     this._ring.material.dispose();
     this.meshes = [];
+    this._bubbleEls.forEach(el => el.remove());
+    this._bubbleEls.clear();
+    this._bubbleContainer.remove();
   }
 
-  update() {
+  update(camera) {
     let ringTarget = null;
 
     // Periodic dead-mesh cleanup: remove GPU resources for long-dead agents
@@ -157,7 +186,7 @@ export class AgentRenderer {
       }
     }
 
-    for (const { group, bodyMat, boatGroup, agent } of this.meshes) {
+    for (const { group, bodyMat, boatGroup, heartMesh, heartMat, agent } of this.meshes) {
       if (agent.health <= 0) {
         bodyMat.color.copy(DEAD_COLOR);
         bodyMat.emissive.set(0x000000);
@@ -187,8 +216,21 @@ export class AgentRenderer {
         bodyMat.color.copy(STATE_COLOR[AgentState.DISCOVERING]);
         bodyMat.emissive.setHex(0x3a1a00);
       } else {
-        bodyMat.color.copy(STATE_COLOR[agent.state] ?? STATE_COLOR[AgentState.WANDERING]);
+        const inLoveSocial = agent.state === AgentState.SOCIALIZING && agent.partner;
+        bodyMat.color.copy(inLoveSocial ? LOVE_SOCIALIZING_COLOR : (STATE_COLOR[agent.state] ?? STATE_COLOR[AgentState.WANDERING]));
         bodyMat.emissive.setHex(agent.selected ? 0x222244 : 0x000000);
+      }
+
+      // Heart orb: fade in when partner is nearby
+      if (heartMesh && heartMat) {
+        const partnerNear = agent.partner && agent.partner.health > 0 &&
+          Math.hypot(agent.x - agent.partner.x, agent.z - agent.partner.z) < 4.0;
+        const targetOpacity = partnerNear ? 0.9 : 0.0;
+        heartMat.opacity += (targetOpacity - heartMat.opacity) * 0.06;
+        const t = Date.now() * 0.001;
+        heartMesh.position.y = 0.72 + Math.sin(t * 3.5 + agent.id * 2.1) * 0.10;
+        const pulse = 1.0 + 0.22 * Math.sin(t * 5.0 + agent.id);
+        heartMesh.scale.setScalar(pulse);
       }
 
       if (agent.selected) ringTarget = group;
@@ -213,6 +255,66 @@ export class AgentRenderer {
     } else {
       this._ring.visible = false;
     }
+
+    // Speech bubbles: project 3D agent positions to screen space
+    if (camera) this._updateBubbles(camera);
+  }
+
+  _updateBubbles(camera) {
+    const canvas = camera.userData._canvas ?? (camera.userData._canvas = document.getElementById('world-canvas'));
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    if (!this._bubblePos) this._bubblePos = new THREE.Vector3();
+    const _pos = this._bubblePos;
+
+    const activeIds = new Set();
+
+    for (const { group, agent } of this.meshes) {
+      if (agent.health <= 0 || !agent.speechBubble) {
+        const el = this._bubbleEls.get(agent.id);
+        if (el) { el.style.display = 'none'; }
+        continue;
+      }
+
+      activeIds.add(agent.id);
+
+      // Project the world position (slightly above head) to NDC
+      _pos.set(group.position.x, group.position.y + 0.7 * (agent.isAdult ? 1.0 : 0.55), group.position.z);
+      _pos.project(camera);
+
+      // NDC to CSS pixels
+      const sx = ( _pos.x * 0.5 + 0.5) * w;
+      const sy = (-_pos.y * 0.5 + 0.5) * h;
+
+      // Don't show if behind camera
+      if (_pos.z > 1) {
+        const el = this._bubbleEls.get(agent.id);
+        if (el) el.style.display = 'none';
+        continue;
+      }
+
+      let el = this._bubbleEls.get(agent.id);
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'speech-bubble';
+        this._bubbleContainer.appendChild(el);
+        this._bubbleEls.set(agent.id, el);
+      }
+
+      if (el.textContent !== agent.speechBubble) el.textContent = agent.speechBubble;
+      el.style.display = '';
+      el.style.left = `${sx}px`;
+      el.style.top  = `${sy}px`;
+
+      // Fade out as timer runs low
+      const fade = Math.min(1, agent.speechBubbleTimer / 0.5);
+      el.style.opacity = fade.toFixed(2);
+    }
+
+    // Hide bubbles for agents not in active set
+    this._bubbleEls.forEach((el, id) => {
+      if (!activeIds.has(id)) el.style.display = 'none';
+    });
   }
 
   /** Returns the agent whose mesh was hit by a raycast, or null */

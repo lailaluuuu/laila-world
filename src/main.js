@@ -490,6 +490,7 @@ async function init() {
           <span style="font-size:11px;opacity:.5">${(agent.curiosity * 100).toFixed(0)}%</span>
         </div>
         ${agent.task ? `<div class="info-row"><span class="info-label">Task</span><span class="info-tag">${Agent.TASKS[agent.task]?.icon ?? '•'} ${Agent.TASKS[agent.task]?.name ?? agent.task}</span></div>` : ''}
+        ${agent.partner && agent.partner.health > 0 ? `<div class="info-row"><span class="info-label">❤️ Love</span><span style="font-size:11px;opacity:.7">${agent.partner.name}</span></div>` : ''}
       </div>
       ${concepts ? `<div class="info-tags">${concepts}</div>` : '<div style="opacity:.3;font-size:12px;margin-top:10px">No discoveries yet</div>'}
     `;
@@ -670,6 +671,12 @@ async function init() {
         birthGameTimes.push(time.gameTime);
         showNotification(`${evt.parentName} has a child — ${child.name}`, 'social');
       }
+
+      // Handle love events
+      for (const evt of conceptGraph.drainLoveEvents()) {
+        showNotification(`💕 ${evt.name1} and ${evt.name2} fell in love!`, 'social');
+        wr.addFlash(evt.x * 2, evt.z * 2, 0xff6b9d);
+      }
     }
 
     // Rendering always runs (for smooth camera)
@@ -681,7 +688,7 @@ async function init() {
       gameTime: time.gameTime,
       dayLength: time.dayLength,
     });
-    ar.update();
+    ar.update(wr.camera);
     horseRenderer.update();
     butterflyRenderer.update(delta > 0 ? delta : 0, weather.current === 'CLEAR');
     buildingRenderer.checkAgents(agents);
