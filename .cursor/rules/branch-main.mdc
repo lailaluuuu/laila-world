@@ -6,5 +6,7 @@ alwaysApply: true
 # Branch: stay on main
 
 - The default and only working branch for this project is **main**.
-- Do not create or switch to other branches unless the user explicitly asks.
+- Do **not** create or switch to other branches unless the user explicitly asks.
+- Do not suggest creating a new branch; always assume work goes on **main** (commit and push to main).
 - When suggesting git commands (push, pull, checkout), use **main** so work stays on main.
+- If the editor or UI offers "Create branch", ignore it and keep working on main.
