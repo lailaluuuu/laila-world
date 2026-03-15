@@ -1,0 +1,10 @@
+---
+description: Keep all work on the main branch
+alwaysApply: true
+---
+
+# Branch: stay on main
+
+- The default and only working branch for this project is **main**.
+- Do not create or switch to other branches unless the user explicitly asks.
+- When suggesting git commands (push, pull, checkout), use **main** so work stays on main.
