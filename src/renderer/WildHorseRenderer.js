@@ -47,10 +47,12 @@ export class WildHorseRenderer {
 
       const root = new THREE.Group();
       const horse = new THREE.Group();
-      horse.position.y = 0.38;
+      horse.position.y = 0.42;
 
+      // ── Body ──────────────────────────────────────────────────
+      // Barrel: longer and slightly more oval
       const barrel = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.2, 0.22, 0.5, 10, 1, false),
+        new THREE.CylinderGeometry(0.18, 0.21, 0.60, 10, 1),
         bodyMat,
       );
       barrel.rotation.x = Math.PI / 2;
@@ -58,117 +60,218 @@ export class WildHorseRenderer {
       barrel.castShadow = true;
       this._geoms.push(barrel.geometry);
 
-      const withers = new THREE.Mesh(
-        new THREE.SphereGeometry(0.16, 8, 6),
+      // Rounded hindquarters — gives the horse its characteristic rump
+      const rump = new THREE.Mesh(
+        new THREE.SphereGeometry(0.20, 8, 6),
         bodyMat,
       );
-      withers.scale.set(1.1, 0.75, 1);
-      withers.position.set(0, 0.08, -0.22);
+      rump.scale.set(0.88, 0.84, 1.05);
+      rump.position.set(0, 0.02, 0.26);
+      rump.castShadow = true;
+      this._geoms.push(rump.geometry);
+
+      // Withers / shoulder area
+      const withers = new THREE.Mesh(
+        new THREE.SphereGeometry(0.15, 8, 6),
+        bodyMat,
+      );
+      withers.scale.set(1.0, 0.85, 1.05);
+      withers.position.set(0, 0.1, -0.24);
       withers.castShadow = true;
       this._geoms.push(withers.geometry);
 
+      // ── Neck ─────────────────────────────────────────────────
+      // More upright and arched, tapering nicely toward head
       const neck = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.09, 0.14, 0.38, 8, 1, false),
+        new THREE.CylinderGeometry(0.08, 0.13, 0.44, 8, 1),
         bodyMat,
       );
-      neck.rotation.x = -0.55;
-      neck.position.set(0, 0.12, -0.48);
+      neck.rotation.x = -0.72;
+      neck.position.set(0, 0.20, -0.48);
       neck.castShadow = true;
       this._geoms.push(neck.geometry);
 
+      // Mane: runs along the crest of the neck
       const mane = new THREE.Mesh(
-        new THREE.BoxGeometry(0.06, 0.14, 0.36),
+        new THREE.BoxGeometry(0.05, 0.18, 0.40),
         maneMat,
       );
-      mane.position.set(0, 0.22, -0.46);
-      mane.rotation.x = -0.5;
+      mane.rotation.x = -0.68;
+      mane.position.set(0, 0.33, -0.46);
       mane.castShadow = true;
       this._geoms.push(mane.geometry);
 
-      const head = new THREE.Mesh(
-        new THREE.BoxGeometry(0.14, 0.16, 0.22),
+      // ── Head ─────────────────────────────────────────────────
+      // Group so the elongated head can tilt naturally
+      const headGroup = new THREE.Group();
+      headGroup.position.set(0, 0.36, -0.65);
+      headGroup.rotation.x = -0.12; // slight nose-down tilt
+
+      // Skull (upper cranium): narrow and deep
+      const skull = new THREE.Mesh(
+        new THREE.BoxGeometry(0.12, 0.16, 0.28),
         bodyMat,
       );
-      head.position.set(0, 0.06, -0.72);
-      head.castShadow = true;
-      this._geoms.push(head.geometry);
+      skull.position.set(0, 0.02, 0);
+      skull.castShadow = true;
+      this._geoms.push(skull.geometry);
 
+      // Lower jaw / face: extends the horse's long face
+      const jaw = new THREE.Mesh(
+        new THREE.BoxGeometry(0.11, 0.10, 0.28),
+        bodyMat,
+      );
+      jaw.position.set(0, -0.08, -0.01);
+      jaw.castShadow = true;
+      this._geoms.push(jaw.geometry);
+
+      // Muzzle / nostrils at the nose tip
       const muzzle = new THREE.Mesh(
-        new THREE.BoxGeometry(0.11, 0.1, 0.16),
+        new THREE.BoxGeometry(0.09, 0.08, 0.10),
         muzzleMat,
       );
-      muzzle.position.set(0, 0.02, -0.86);
+      muzzle.position.set(0, -0.06, -0.18);
       muzzle.castShadow = true;
       this._geoms.push(muzzle.geometry);
 
+      // Ears: upright on top of skull
       const earL = new THREE.Mesh(
-        new THREE.ConeGeometry(0.04, 0.1, 4),
+        new THREE.ConeGeometry(0.032, 0.10, 4),
         darkMat,
       );
       const earR = earL.clone();
-      earL.position.set(-0.06, 0.18, -0.68);
-      earR.position.set(0.06, 0.18, -0.68);
-      earL.rotation.z = 0.35;
-      earR.rotation.z = -0.35;
+      earL.position.set(-0.045, 0.14, 0.06);
+      earR.position.set(0.045, 0.14, 0.06);
+      earL.rotation.z = 0.22;
+      earR.rotation.z = -0.22;
       earL.castShadow = earR.castShadow = true;
       this._geoms.push(earL.geometry);
 
-      const tail = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.03, 0.02, 0.45, 6, 1, false),
+      // Forelock: small tuft of mane between the ears
+      const forelock = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04, 0.09, 0.05),
         maneMat,
       );
-      tail.rotation.x = 0.85;
-      tail.position.set(0, 0.1, 0.38);
-      tail.castShadow = true;
-      this._geoms.push(tail.geometry);
+      forelock.position.set(0, 0.10, 0.05);
+      forelock.rotation.x = -0.25;
+      forelock.castShadow = true;
+      this._geoms.push(forelock.geometry);
 
+      headGroup.add(skull, jaw, muzzle, earL, earR, forelock);
+
+      // ── Tail ─────────────────────────────────────────────────
+      // Two segments: thick root tapering to a flowing end
+      const tailGroup = new THREE.Group();
+      tailGroup.position.set(0, 0.08, 0.38);
+      tailGroup.rotation.x = 0.75;
+
+      const tailRoot = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.042, 0.034, 0.18, 6),
+        maneMat,
+      );
+      tailRoot.position.y = -0.09;
+      tailRoot.castShadow = true;
+      this._geoms.push(tailRoot.geometry);
+
+      const tailFlow = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.034, 0.008, 0.38, 6),
+        maneMat,
+      );
+      tailFlow.position.y = -0.37;
+      tailFlow.castShadow = true;
+      this._geoms.push(tailFlow.geometry);
+
+      tailGroup.add(tailRoot, tailFlow);
+
+      // ── Legs ─────────────────────────────────────────────────
+      // Two-segment legs with a knee/hock joint for a realistic silhouette.
+      // Front knees angle back slightly; hind hocks angle forward more (horse anatomy).
       const self = this;
-      function makeLeg(material, x, z) {
+      function makeLeg(material, x, z, isFront) {
         const pivot = new THREE.Group();
         pivot.position.set(x, 0, z);
+
+        // Upper leg (thigh / forearm)
         const upper = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.055, 0.045, 0.22, 6, 1, false),
+          new THREE.CylinderGeometry(0.056, 0.046, 0.24, 6),
           material,
         );
-        upper.position.y = -0.11;
+        upper.position.y = -0.12;
         upper.castShadow = true;
+        self._geoms.push(upper.geometry);
+
+        // Joint group: front knee angles back; hind hock angles forward
+        const joint = new THREE.Group();
+        joint.position.y = -0.24;
+        joint.rotation.x = isFront ? -0.16 : 0.24;
+
+        // Lower leg (cannon / pastern)
         const lower = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.04, 0.035, 0.2, 6, 1, false),
+          new THREE.CylinderGeometry(0.037, 0.027, 0.22, 6),
           material,
         );
-        lower.position.y = -0.28;
+        lower.position.y = -0.11;
         lower.castShadow = true;
+        self._geoms.push(lower.geometry);
+
         const hoof = new THREE.Mesh(
           new THREE.BoxGeometry(0.07, 0.05, 0.09),
           hoofMat,
         );
-        hoof.position.y = -0.42;
+        hoof.position.y = -0.23;
         hoof.castShadow = true;
-        pivot.add(upper, lower, hoof);
-        self._geoms.push(upper.geometry, lower.geometry, hoof.geometry);
+        self._geoms.push(hoof.geometry);
+
+        joint.add(lower, hoof);
+        pivot.add(upper, joint);
         return { pivot };
       }
 
-      const legFL = makeLeg(bodyMat, 0.12, -0.14);
-      const legFR = makeLeg(bodyMat, -0.12, -0.14);
-      const legBL = makeLeg(bodyMat, 0.12, 0.2);
-      const legBR = makeLeg(bodyMat, -0.12, 0.2);
+      const legFL = makeLeg(bodyMat, 0.11, -0.18, true);
+      const legFR = makeLeg(bodyMat, -0.11, -0.18, true);
+      const legBL = makeLeg(bodyMat, 0.11, 0.23, false);
+      const legBR = makeLeg(bodyMat, -0.11, 0.23, false);
 
       horse.add(
         barrel,
+        rump,
         withers,
         neck,
         mane,
-        head,
-        muzzle,
-        earL,
-        earR,
-        tail,
+        headGroup,
+        tailGroup,
         legFL.pivot,
         legFR.pivot,
         legBL.pivot,
         legBR.pivot,
       );
+
+      // ── Rider (hidden until mounted) ───────────────────────────────────
+      const skinTones = [0xd4a574, 0xc68642, 0x8d5524, 0xfad9b5, 0xa0522d, 0xe8c99a];
+      const skinTone  = skinTones[i % skinTones.length];
+      const riderGroup = new THREE.Group();
+      riderGroup.visible = false;
+
+      const riderBodyGeom = new THREE.CylinderGeometry(0.052, 0.062, 0.19, 6);
+      const riderBodyMat  = new THREE.MeshLambertMaterial({ color: 0x7a5c3a }); // cloth
+      const riderBodyMesh = new THREE.Mesh(riderBodyGeom, riderBodyMat);
+      riderBodyMesh.position.y = 0.095;
+      riderBodyMesh.castShadow = true;
+      this._geoms.push(riderBodyGeom);
+      this._mats.push(riderBodyMat);
+
+      const riderHeadGeom = new THREE.SphereGeometry(0.062, 6, 5);
+      const riderHeadMat  = new THREE.MeshLambertMaterial({ color: skinTone });
+      const riderHeadMesh = new THREE.Mesh(riderHeadGeom, riderHeadMat);
+      riderHeadMesh.position.y = 0.235;
+      riderHeadMesh.castShadow = true;
+      this._geoms.push(riderHeadGeom);
+      this._mats.push(riderHeadMat);
+
+      riderGroup.add(riderBodyMesh, riderHeadMesh);
+      // Sit on top of barrel, shifted toward withers
+      riderGroup.position.set(0, 0.26, -0.10);
+      horse.add(riderGroup);
 
       root.add(horse);
       this.scene.add(root);
@@ -177,7 +280,8 @@ export class WildHorseRenderer {
         horse,
         horseSim,
         legs: [legFL, legFR, legBL, legBR],
-        tail,
+        tail: tailGroup,
+        riderGroup,
       });
     }
   }
@@ -193,7 +297,8 @@ export class WildHorseRenderer {
 
   update() {
     for (const entry of this.entries) {
-      const { root, horse, horseSim, legs, tail } = entry;
+      const { root, horse, horseSim, legs, tail, riderGroup } = entry;
+      if (riderGroup) riderGroup.visible = !!horseSim.rider;
       const tile = this.world.getTile(
         Math.floor(horseSim.x),
         Math.floor(horseSim.z),
@@ -240,7 +345,7 @@ export class WildHorseRenderer {
         pitch = 0.03;
       }
 
-      horse.position.y = 0.38 + bounce;
+      horse.position.y = 0.42 + bounce;
       horse.rotation.x = Math.sin(phase * (gait === 'run' ? 2 : 1)) * pitch;
 
       legs[0].pivot.rotation.x = swing * Math.sin(phase);

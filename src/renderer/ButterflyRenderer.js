@@ -16,6 +16,17 @@ const WING_COLORS = [
 
 const BODY_COLOR = 0x2a2018;
 
+/**
+ * Eased flap value from a raw phase angle.
+ * Using exponent < 1 makes the curve linger near ±1 (wings fully open/closed)
+ * and snap quickly through 0 (mid-stroke) — like a real butterfly stroke that
+ * decelerates at the top and bottom of each beat.
+ */
+function easedFlap(phase) {
+  const s = Math.sin(phase);
+  return Math.sign(s) * Math.pow(Math.abs(s), 0.62);
+}
+
 export class ButterflyRenderer {
   constructor(scene, world) {
     this.scene = scene;
@@ -34,13 +45,25 @@ export class ButterflyRenderer {
       });
     }
 
-    const wingShape = new THREE.Shape();
-    wingShape.moveTo(0, 0);
-    wingShape.quadraticCurveTo(0.22, 0.18, 0.38, 0.02);
-    wingShape.quadraticCurveTo(0.32, -0.12, 0.1, -0.08);
-    wingShape.lineTo(0, 0);
-    const wingGeom = new THREE.ShapeGeometry(wingShape);
-    this._geoms.push(wingGeom);
+    // ── Forewing shape: upper, larger, more pointed at tip ──────────────────
+    const foreShape = new THREE.Shape();
+    foreShape.moveTo(0, 0);
+    foreShape.quadraticCurveTo(0.13, 0.23, 0.34, 0.17);
+    foreShape.quadraticCurveTo(0.42, 0.03, 0.37, -0.05);
+    foreShape.quadraticCurveTo(0.19, -0.09, 0.06, -0.04);
+    foreShape.lineTo(0, 0);
+    const foreGeom = new THREE.ShapeGeometry(foreShape);
+    this._geoms.push(foreGeom);
+
+    // ── Hindwing shape: lower, smaller, rounder ──────────────────────────────
+    const hindShape = new THREE.Shape();
+    hindShape.moveTo(0, -0.03);
+    hindShape.quadraticCurveTo(0.10, 0.07, 0.25, 0.05);
+    hindShape.quadraticCurveTo(0.31, -0.03, 0.23, -0.17);
+    hindShape.quadraticCurveTo(0.10, -0.21, 0.03, -0.12);
+    hindShape.lineTo(0, -0.03);
+    const hindGeom = new THREE.ShapeGeometry(hindShape);
+    this._geoms.push(hindGeom);
 
     for (let i = 0; i < COUNT; i++) {
       const p = spawns[i];
@@ -52,18 +75,24 @@ export class ButterflyRenderer {
       const surfY = tile ? TerrainRenderer.surfaceY(tile.type) : 0.14;
 
       const wingColor = WING_COLORS[i % WING_COLORS.length];
-      const wingMat = new THREE.MeshBasicMaterial({
+
+      // Forewing materials (main colour)
+      const foreMatL = new THREE.MeshBasicMaterial({
         color: wingColor,
         side: THREE.DoubleSide,
         transparent: true,
         opacity: 0.92,
         depthWrite: false,
       });
-      const wingMat2 = wingMat.clone();
-      wingMat2.color.setHex(wingColor);
-      // Slightly different shade on hind wing
-      wingMat2.color.offsetHSL(0, 0.08, -0.06);
-      this._mats.push(wingMat, wingMat2);
+      const foreMatR = foreMatL.clone();
+      this._mats.push(foreMatL, foreMatR);
+
+      // Hindwing materials (slightly darker, less saturated — hind pair)
+      const hindMatL = foreMatL.clone();
+      hindMatL.color.offsetHSL(0, 0.08, -0.07);
+      hindMatL.opacity = 0.84;
+      const hindMatR = hindMatL.clone();
+      this._mats.push(hindMatL, hindMatR);
 
       const bodyGeom = new THREE.CylinderGeometry(0.018, 0.022, 0.14, 6);
       this._geoms.push(bodyGeom);
@@ -75,40 +104,52 @@ export class ButterflyRenderer {
       body.rotation.z = Math.PI / 2;
       root.add(body);
 
-      const wingL = new THREE.Mesh(wingGeom, wingMat);
-      wingL.position.set(0, 0, 0.01);
-      wingL.rotation.x = -Math.PI / 2;
-      wingL.rotation.z = Math.PI / 2;
-      const wingR = wingL.clone();
-      wingR.material = wingMat2;
-      wingR.scale.x = -1;
+      // ── Helper: build a mirrored left/right wing pair ──────────────────────
+      const makeWingPair = (geom, matL, matR) => {
+        const group = new THREE.Group();
+        const wL = new THREE.Mesh(geom, matL);
+        wL.position.set(0, 0, 0.01);
+        wL.rotation.x = -Math.PI / 2;
+        wL.rotation.z = Math.PI / 2;
+        const wR = wL.clone();
+        wR.material = matR;
+        wR.scale.x = -1;
+        group.add(wL, wR);
+        return group;
+      };
 
-      const wings = new THREE.Group();
-      wings.add(wingL);
-      wings.add(wingR);
-      root.add(wings);
+      // Hindwings render first (behind forewings) and attach slightly rearward
+      const hindWings = makeWingPair(hindGeom, hindMatL, hindMatR);
+      hindWings.position.x = -0.025;
 
-      root.position.set(
-        wx,
-        surfY + 1.2 + Math.random() * 1.8,
-        wz,
-      );
-      root.scale.setScalar(0.85 + Math.random() * 0.35);
+      // Forewings attach slightly forward
+      const foreWings = makeWingPair(foreGeom, foreMatL, foreMatR);
+      foreWings.position.x = 0.02;
+
+      root.add(hindWings);
+      root.add(foreWings);
+
+      // ── Depth / parallax: vary size so nearer butterflies appear larger ─────
+      const sizeScale = 0.85 + Math.random() * 0.35; // 0.85 – 1.20
+      root.position.set(wx, surfY + 1.2 + Math.random() * 1.8, wz);
+      root.scale.setScalar(sizeScale);
       this._group.add(root);
 
       this.entries.push({
         root,
-        wings,
+        body,
+        foreWings,
+        hindWings,
         wx,
         wz,
-        vy: 0.15 + Math.random() * 0.12,
-        phase: Math.random() * Math.PI * 2,
-        flapSpeed: 10 + Math.random() * 6,
+        phase:       Math.random() * Math.PI * 2,
+        flapSpeed:   10 + Math.random() * 6,       // 10 – 16 rad/s (desync)
         wanderPhase: Math.random() * Math.PI * 2,
-        targetWx: wx + (Math.random() - 0.5) * 14,
-        targetWz: wz + (Math.random() - 0.5) * 14,
-        retargetIn: 2 + Math.random() * 4,
+        targetWx:    wx + (Math.random() - 0.5) * 14,
+        targetWz:    wz + (Math.random() - 0.5) * 14,
+        retargetIn:  2 + Math.random() * 4,
         heightOffset: 1.1 + Math.random() * 1.4,
+        sizeScale,
       });
     }
   }
@@ -129,31 +170,62 @@ export class ButterflyRenderer {
       e.root.visible = sunny;
       if (!sunny) continue;
 
-      e.phase += delta * e.flapSpeed;
+      e.phase       += delta * e.flapSpeed;
       e.wanderPhase += delta * 0.7;
-      e.retargetIn -= delta;
+      e.retargetIn  -= delta;
 
-      const flap = Math.sin(e.phase);
-      e.wings.rotation.y = flap * 0.85;
-      e.wings.scale.y = 0.88 + Math.abs(flap) * 0.2;
+      // ── 1. Wing flapping with organic easing ────────────────────────────────
+      // Forewings: full amplitude, eased
+      const flapFore = easedFlap(e.phase);
+      // Hindwings: lag ~0.31 rad behind forewings (~18° / a few milliseconds)
+      const flapHind = easedFlap(e.phase - 0.31);
 
+      e.foreWings.rotation.y = flapFore * 0.85;
+      e.foreWings.scale.y    = 0.90 + Math.abs(flapFore) * 0.18;
+
+      e.hindWings.rotation.y = flapHind * 0.70; // hindwings open slightly less
+      e.hindWings.scale.y    = 0.90 + Math.abs(flapHind) * 0.15;
+
+      // ── 2. Body tilt — rocks opposite to the wing stroke ────────────────────
+      // flapFore near +1 (wings up): body tips one way; -1 (wings down): other
+      e.body.rotation.z = Math.PI / 2 - flapFore * 0.10;
+
+      // ── 3. Retarget waypoint ────────────────────────────────────────────────
       if (e.retargetIn <= 0) {
         e.retargetIn = 3 + Math.random() * 6;
-        e.targetWx =
-          margin + Math.random() * (worldW - margin * 2);
-        e.targetWz =
-          margin + Math.random() * (worldD - margin * 2);
+        e.targetWx = margin + Math.random() * (worldW - margin * 2);
+        e.targetWz = margin + Math.random() * (worldD - margin * 2);
       }
 
-      const dx = e.targetWx - e.wx;
-      const dz = e.targetWz - e.wz;
+      const dx  = e.targetWx - e.wx;
+      const dz  = e.targetWz - e.wz;
       const len = Math.hypot(dx, dz) || 1;
-      const speed = 1.35 + Math.sin(e.wanderPhase) * 0.25;
+
+      // ── 4. Flight path — wandering curve ────────────────────────────────────
+      // Depth parallax: larger (nearer) butterflies move proportionally faster
+      const speed = (1.35 + Math.sin(e.wanderPhase) * 0.25) * e.sizeScale;
+
+      // Advance along heading
       e.wx += (dx / len) * speed * delta;
       e.wz += (dz / len) * speed * delta;
 
+      // Add perpendicular lateral drift for an organic meander
+      const perpX = -dz / len;
+      const perpZ =  dx / len;
+      const drift = Math.sin(e.wanderPhase * 1.85) * 0.50 * delta;
+      e.wx += perpX * drift;
+      e.wz += perpZ * drift;
+
+      // Keep inside world bounds
+      e.wx = Math.max(margin, Math.min(worldW - margin, e.wx));
+      e.wz = Math.max(margin, Math.min(worldD - margin, e.wz));
+
+      // ── 5. Vertical bob: slow sinusoidal drift + small flap-linked pulse ────
       const ground = this._groundY(e.wx, e.wz);
-      const wantY = ground + e.heightOffset + Math.sin(e.wanderPhase * 1.3) * 0.35;
+      const flapBob = Math.abs(flapFore) * 0.07; // rises slightly on upstroke
+      const wantY = ground + e.heightOffset
+        + Math.sin(e.wanderPhase * 1.3) * 0.28
+        + flapBob;
       const y = e.root.position.y;
       e.root.position.y = y + (wantY - y) * Math.min(1, delta * 2.2);
 

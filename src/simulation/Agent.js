@@ -6,6 +6,7 @@ const AGENT_SPEED     = 1.8;   // tiles/sec
 const HUNGER_DRAIN    = 1 / 90; // full → empty in 90 game-sec
 const ENERGY_DRAIN    = 1 / 200;
 const ENERGY_RECOVER  = 1 / 20;
+const VITALITY_DRAIN  = 1 / 400; // very slow — full → critical in ~400 game-sec
 const SOCIAL_COOLDOWN = 4;      // game-sec between social checks
 
 export const AgentState = {
@@ -28,7 +29,7 @@ export class Agent {
     this.targetZ = z;
 
     // Needs: 1.0 = full/satisfied, 0.0 = critical
-    this.needs = { hunger: 0.8 + Math.random() * 0.2, energy: 0.8 + Math.random() * 0.2 };
+    this.needs = { hunger: 0.8 + Math.random() * 0.2, energy: 0.8 + Math.random() * 0.2, vitality: 1.0 };
 
     this.state = AgentState.WANDERING;
     this.knowledge = new Set();   // set of concept IDs
@@ -49,6 +50,10 @@ export class Agent {
     this.selected = false;
     this.facingX = 0;
     this.facingZ = 1;
+
+    /** WildHorse this agent is currently riding, or null */
+    this.mountedHorse = null;
+    this._rideTimer = 0;
 
     /** Task role (gatherer, teacher, scout, carer) — set when Organisation is discovered */
     this.task = null;
@@ -84,6 +89,23 @@ export class Agent {
   tick(delta, world, allAgents, conceptGraph, weatherMult = 1.0) {
     this.age += delta;
 
+    // ── Horse riding: sync position to mount ──────────────────────────────
+    if (this.mountedHorse) {
+      if (this.mountedHorse.rider !== this) {
+        // Someone cleared the horse's rider externally
+        this.mountedHorse = null;
+      } else {
+        this.x       = this.mountedHorse.x;
+        this.z       = this.mountedHorse.z;
+        this.targetX = this.x;
+        this.targetZ = this.z;
+        this.facingX = this.mountedHorse.facingX;
+        this.facingZ = this.mountedHorse.facingZ;
+        this._rideTimer -= delta;
+        if (this._rideTimer <= 0) this._dismount();
+      }
+    }
+
     if (this.knowledge.has('organisation') && !this.task) this._adoptTask(allAgents);
 
     // Knowledge bonuses
@@ -114,7 +136,13 @@ export class Agent {
     if (this.knowledge.has('church')) envMult = Math.max(1.0, envMult - 0.04);
 
     // Drain needs
-    this.needs.hunger = Math.max(0, this.needs.hunger - HUNGER_DRAIN * delta);
+    this.needs.hunger   = Math.max(0, this.needs.hunger   - HUNGER_DRAIN  * delta);
+    this.needs.vitality = Math.max(0, this.needs.vitality - VITALITY_DRAIN * delta);
+    // Medicine / herbalism slow vitality loss passively
+    if (hasMedicine) {
+      const vRegen = this.knowledge.has('herbalism') ? 0.0075 : 0.005;
+      this.needs.vitality = Math.min(1, this.needs.vitality + vRegen * delta);
+    }
     const isSleeping = this.state === AgentState.SLEEPING;
     if (!isSleeping) {
       this.needs.energy = Math.max(0, this.needs.energy - ENERGY_DRAIN * delta * envMult);
@@ -219,6 +247,25 @@ export class Agent {
         // Deplete the tile (better tools = more careful harvesting = less depletion)
         tile.resource = Math.max(0, tile.resource - 0.28 / toolMult);
       }
+
+      // Herbs: medicine-knowers restore vitality
+      if (tile && tile.herbs > 0.05 && this.knowledge.has('medicine')) {
+        const healMult = this.knowledge.has('herbalism') ? 1.5 : 1.0;
+        this.needs.vitality = Math.min(1, this.needs.vitality + 0.25 * healMult);
+        tile.herbs = Math.max(0, tile.herbs - 0.15);
+      }
+
+      // Mushrooms: fallback food for any agent (no concept needed)
+      if (tile && tile.mushrooms > 0.05) {
+        this.needs.hunger = Math.min(1, this.needs.hunger + 0.20);
+        tile.mushrooms = Math.max(0, tile.mushrooms - 0.12);
+      }
+
+      // Flint: one-time gather that boosts stone_tools discovery
+      if (tile && tile.flint === 1 && !this.knowledge.has('stone_tools')) {
+        tile.flint = 0;
+        this._hasFlint = true;
+      }
     }
     this._decideAction(world, allAgents);
   }
@@ -252,6 +299,17 @@ export class Agent {
         this.state = AgentState.WANDERING;
         this.targetX = warmTile.x + 0.5;
         this.targetZ = warmTile.z + 0.5;
+        return;
+      }
+    }
+
+    // Low vitality: medicine-knowers seek herb tiles to restore it
+    if (this.knowledge.has('medicine') && this.needs.vitality < 0.4) {
+      const target = this._pickHerbTarget(world);
+      if (target) {
+        this.state = AgentState.GATHERING;
+        this.targetX = target.x + 0.5;
+        this.targetZ = target.z + 0.5;
         return;
       }
     }
@@ -321,6 +379,36 @@ export class Agent {
     } else {
       this._pickWanderTarget(world);
     }
+  }
+
+  /** Find nearest tile with herbs or mushrooms within radius 10. Returns the tile or null. */
+  _pickHerbTarget(world) {
+    const cx = Math.floor(this.x);
+    const cz = Math.floor(this.z);
+    const r = 10;
+    let best = null;
+    let bestDist = Infinity;
+    for (let dz = -r; dz <= r; dz++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const dist = Math.hypot(dx, dz);
+        if (dist > r) continue;
+        const tile = world.getTile(cx + dx, cz + dz);
+        if (!tile) continue;
+        if ((tile.herbs > 0.1) || (tile.mushrooms > 0.1)) {
+          if (dist < bestDist) { bestDist = dist; best = tile; }
+        }
+      }
+    }
+    return best;
+  }
+
+  _dismount() {
+    if (this.mountedHorse) {
+      this.mountedHorse.rider = null;
+      this.mountedHorse = null;
+    }
+    this._rideTimer = 0;
+    this.state = AgentState.WANDERING;
   }
 
   // ── Concept discovery ─────────────────────────────────────────────────

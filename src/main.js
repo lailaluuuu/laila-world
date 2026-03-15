@@ -401,8 +401,8 @@ async function init() {
     [TileType.DEEP_WATER]: 'Open ocean. Deep fish patrol these waters. Requires Sailing to cross.',
     [TileType.WATER]:    'Coastal water. Shallow fish swim here. Requires Sailing to cross.',
     [TileType.GRASS]:    'Berries, sheep, and pigs. Good for gathering food.',
-    [TileType.FOREST]:   'Trees and wild game. Rich in food and resources.',
-    [TileType.STONE]:    'Rocks and clay. Good for stone tools and pottery.',
+    [TileType.FOREST]:   'Trees, wild game, mushrooms, and healing herbs. Rich in food and natural resources.',
+    [TileType.STONE]:    'Rocks and flint shards. Good for stone tools and pottery.',
     [TileType.MOUNTAIN]: 'Peaks and snow. Requires Mountain Climbing to traverse.',
   };
 
@@ -419,6 +419,29 @@ async function init() {
           <div class="info-bar-wrap"><div class="info-bar-fill" style="width:${pct}%"></div></div>
         </div>`;
     }
+    if (tile.herbs !== undefined) {
+      const pct = Math.round(tile.herbs * 100);
+      resourceHtml += `
+        <div class="info-row">
+          <span class="info-label">🌿 Herbs</span>
+          <div class="info-bar-wrap"><div class="info-bar-fill" style="width:${pct}%;background:#d97ef5"></div></div>
+        </div>`;
+    }
+    if (tile.mushrooms !== undefined) {
+      const pct = Math.round(tile.mushrooms * 100);
+      resourceHtml += `
+        <div class="info-row">
+          <span class="info-label">🍄 Mushrooms</span>
+          <div class="info-bar-wrap"><div class="info-bar-fill" style="width:${pct}%;background:#c8860a"></div></div>
+        </div>`;
+    }
+    if (tile.flint !== undefined) {
+      resourceHtml += `
+        <div class="info-row">
+          <span class="info-label">🪨 Flint</span>
+          <span style="font-size:11px;opacity:.8">${tile.flint === 1 ? 'Present' : 'Gathered'}</span>
+        </div>`;
+    }
     document.getElementById('info-content').innerHTML = `
       <div class="info-name">${info.icon} ${info.name}</div>
       <div class="info-state" style="opacity:.7;font-size:12px">Tile (${tile.x}, ${tile.z})</div>
@@ -429,14 +452,17 @@ async function init() {
 
   function updateInfoPanel(agent) {
     if (!agent) return;
-    const hunger = agent.needs?.hunger ?? 0;
-    const energy = agent.needs?.energy ?? 0;
-    const hCol = hunger < 0.3 ? 'crit' : hunger < 0.6 ? 'warn' : '';
-    const eCol = energy < 0.3 ? 'crit' : energy < 0.6 ? 'warn' : '';
+    const hunger   = agent.needs?.hunger   ?? 0;
+    const energy   = agent.needs?.energy   ?? 0;
+    const vitality = agent.needs?.vitality ?? 1;
+    const hCol = hunger   < 0.3 ? 'crit' : hunger   < 0.6 ? 'warn' : '';
+    const eCol = energy   < 0.3 ? 'crit' : energy   < 0.6 ? 'warn' : '';
+    const vCol = vitality < 0.3 ? 'crit' : vitality < 0.6 ? 'warn' : '';
     const concepts = [...agent.knowledge].map(id => {
       const c = conceptGraph.concepts.get(id);
       return c ? `<span class="info-tag">${c.icon ?? ''} ${c.name}</span>` : '';
     }).join('');
+    const hasMedicine = agent.knowledge.has('medicine');
 
     document.getElementById('info-content').innerHTML = `
       <div class="info-name">${agent.name}</div>
@@ -450,6 +476,11 @@ async function init() {
           <span class="info-label">Energy</span>
           <div class="info-bar-wrap"><div class="info-bar-fill ${eCol}" style="width:${energy * 100}%"></div></div>
         </div>
+        ${hasMedicine ? `
+        <div class="info-row">
+          <span class="info-label">🌿 Vitality</span>
+          <div class="info-bar-wrap"><div class="info-bar-fill ${vCol}" style="width:${vitality * 100}%;background:#d97ef5"></div></div>
+        </div>` : ''}
         <div class="info-row">
           <span class="info-label">Age</span>
           <span style="font-size:11px;opacity:.5">${Math.floor(agent.age)}s / ${Math.floor(agent.maxAge)}s ${agent.isAdult ? '' : '· juvenile'}</span>
@@ -572,6 +603,24 @@ async function init() {
         }
       }
 
+      // Horse mounting: agents with horse_taming can mount nearby riderless horses
+      for (const agent of agents) {
+        if (agent.health <= 0 || agent.mountedHorse) continue;
+        if (!agent.knowledge.has('horse_taming')) continue;
+        for (const horse of horses) {
+          if (horse.rider) continue;
+          if (Math.hypot(horse.x - agent.x, horse.z - agent.z) < 1.5) {
+            if (Math.random() < 0.018 * delta * 60) {
+              agent.mountedHorse = horse;
+              horse.rider = agent;
+              agent._rideTimer = 22 + Math.random() * 22;
+              showNotification(`${agent.name} mounts a wild horse!`, 'social');
+              break;
+            }
+          }
+        }
+      }
+
       // Handle simulation events
       for (const evt of conceptGraph.drainEvents()) {
         const concept = conceptGraph.concepts.get(evt.conceptId);
@@ -627,6 +676,7 @@ async function init() {
     wr.setTimeOfDay(time.timeOfDay);
     wr.setWeather(weather.meta);
     terrainRenderer.updateGlaciers(world.glacierData);
+    terrainRenderer.updateResources(world);
     terrainRenderer.updateAnimals(delta > 0 ? delta : 0, {
       gameTime: time.gameTime,
       dayLength: time.dayLength,

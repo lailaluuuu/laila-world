@@ -24,6 +24,11 @@ export class World {
 
   // ── Procedural generation ─────────────────────────────────────────────
 
+  // Deterministic per-tile pseudo-random (stable across redraws)
+  _rng(x, z, offset = 0) {
+    return Math.sin(x * 127.1 + z * 311.7 + offset * 74.5) * 0.5 + 0.5;
+  }
+
   _noise(x, z) {
     const s = this.seed * 0.137;
     return (
@@ -107,6 +112,32 @@ export class World {
       }
     }
 
+    // Fourth pass: natural resource fields (herbs, mushrooms, reeds, flint)
+    const hasAdj = (tx, tz, t) => {
+      for (const [dx, dz] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+        const nx = tx+dx, nz = tz+dz;
+        if (nx<0||nx>=this.width||nz<0||nz>=this.height) continue;
+        if (tiles[nz][nx].type === t) return true;
+      }
+      return false;
+    };
+    for (let z = 0; z < this.height; z++) {
+      for (let x = 0; x < this.width; x++) {
+        const tile = tiles[z][x];
+        if (tile.type === TileType.FOREST) {
+          if (this._rng(x, z, 301) < 0.45) tile.herbs     = 1.0;
+          if (this._rng(x, z, 303) < 0.30) tile.mushrooms = 1.0;
+        }
+        if (tile.type === TileType.GRASS &&
+            (hasAdj(x, z, TileType.WATER) || hasAdj(x, z, TileType.DEEP_WATER))) {
+          if (this._rng(x, z, 302) < 0.35) tile.herbs = 1.0;
+        }
+        if (tile.type === TileType.STONE) {
+          if (this._rng(x, z, 306) < 0.25) tile.flint = 1;
+        }
+      }
+    }
+
     return tiles;
   }
 
@@ -187,6 +218,9 @@ export class World {
         const tile = this.tiles[z][x];
         if (tile.type === TileType.GRASS)  tile.resource = Math.min(1, tile.resource + 0.0020 * delta * mult);
         if (tile.type === TileType.FOREST) tile.resource = Math.min(1, tile.resource + 0.0012 * delta * mult);
+        if (tile.herbs     !== undefined)  tile.herbs     = Math.min(1, tile.herbs     + 0.0006 * delta * mult);
+        if (tile.mushrooms !== undefined)  tile.mushrooms = Math.min(1, tile.mushrooms + 0.0008 * delta * mult);
+        // flint does not regenerate
       }
     }
   }

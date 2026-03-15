@@ -61,6 +61,9 @@ export class WildHorse {
 
     this.jumpT = 0;
     this._jumpCooldown = Math.random() * 3;
+
+    /** Agent currently riding this horse, or null */
+    this.rider = null;
   }
 
   _pickTarget(world) {

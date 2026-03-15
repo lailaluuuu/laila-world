@@ -228,17 +228,21 @@ export class TerrainRenderer {
       const surfY = TerrainRenderer.surfaceY(TileType.FOREST);
 
       // ── Shared geometries ───────────────────────────────────────────────
-      const normalTrunkGeom = new THREE.CylinderGeometry(0.08, 0.11, 0.38, 5);
-      const tallTrunkGeom   = new THREE.CylinderGeometry(0.06, 0.09, 0.55, 5);
-      const birchTrunkGeom  = new THREE.CylinderGeometry(0.045, 0.06, 0.50, 5);
-      const cherryTrunkGeom = new THREE.CylinderGeometry(0.07, 0.10, 0.40, 5);
-      const pineGeom        = new THREE.ConeGeometry(0.33, 0.78, 6);
-      const darkFirGeom     = new THREE.ConeGeometry(0.24, 1.08, 7);
-      const roundGeom       = new THREE.SphereGeometry(0.36, 7, 5);
-      const cherryGeom      = new THREE.SphereGeometry(0.42, 8, 5);
-      const cherryDeepGeom  = new THREE.SphereGeometry(0.46, 9, 6);
-      const cherryWispGeom  = new THREE.SphereGeometry(0.38, 8, 5);
-      const birchGeom       = new THREE.SphereGeometry(0.22, 6, 5);
+      const normalTrunkGeom  = new THREE.CylinderGeometry(0.08, 0.11, 0.38, 5);
+      const tallTrunkGeom    = new THREE.CylinderGeometry(0.06, 0.09, 0.55, 5);
+      const birchTrunkGeom   = new THREE.CylinderGeometry(0.045, 0.06, 0.50, 5);
+      const cherryTrunkGeom  = new THREE.CylinderGeometry(0.07, 0.10, 0.40, 5);
+      const willowTrunkGeom  = new THREE.CylinderGeometry(0.09, 0.13, 0.42, 5);
+      const pineGeom         = new THREE.ConeGeometry(0.33, 0.78, 6);
+      const darkFirGeom      = new THREE.ConeGeometry(0.24, 1.08, 7);
+      const spruceGeom       = new THREE.ConeGeometry(0.20, 0.95, 8);
+      const roundGeom        = new THREE.SphereGeometry(0.36, 7, 5);
+      const cherryGeom       = new THREE.SphereGeometry(0.42, 8, 5);
+      const cherryDeepGeom   = new THREE.SphereGeometry(0.46, 9, 6);
+      const cherryWispGeom   = new THREE.SphereGeometry(0.38, 8, 5);
+      const birchGeom        = new THREE.SphereGeometry(0.22, 6, 5);
+      const wideGeom         = new THREE.SphereGeometry(0.40, 8, 5);
+      const narrowGeom       = new THREE.SphereGeometry(0.26, 6, 5);
 
       // ── Helper: create + register one tree variant ──────────────────────
       // fsx/fsy/fsz: per-axis foliage scale multipliers (for flattening etc.)
@@ -277,19 +281,29 @@ export class TerrainRenderer {
 
       // ── Assign each tile a tree type via deterministic rng ───────────────
       const grp = { pine: [], oak: [], cherry: [], cherryDeep: [], cherryWhite: [],
-                    autOrange: [], autRed: [], autGold: [], darkFir: [], birch: [] };
+                    autOrange: [], autRed: [], autGold: [], darkFir: [], birch: [],
+                    maple: [], willow: [], poplar: [], jacaranda: [], teal: [],
+                    autPurple: [], spruce: [], lime: [] };
       forestTrees.forEach(tile => {
         const r = this._rng(tile.x, tile.z, 99);
-        if      (r < 0.18) grp.pine.push(tile);
-        else if (r < 0.30) grp.oak.push(tile);
-        else if (r < 0.42) grp.cherry.push(tile);
-        else if (r < 0.52) grp.cherryDeep.push(tile);
-        else if (r < 0.60) grp.cherryWhite.push(tile);
-        else if (r < 0.68) grp.autOrange.push(tile);
-        else if (r < 0.75) grp.autRed.push(tile);
-        else if (r < 0.81) grp.autGold.push(tile);
-        else if (r < 0.92) grp.darkFir.push(tile);
-        else               grp.birch.push(tile);
+        if      (r < 0.08) grp.pine.push(tile);
+        else if (r < 0.16) grp.oak.push(tile);
+        else if (r < 0.24) grp.cherry.push(tile);
+        else if (r < 0.31) grp.cherryDeep.push(tile);
+        else if (r < 0.37) grp.cherryWhite.push(tile);
+        else if (r < 0.43) grp.autOrange.push(tile);
+        else if (r < 0.49) grp.autRed.push(tile);
+        else if (r < 0.55) grp.autGold.push(tile);
+        else if (r < 0.63) grp.darkFir.push(tile);
+        else if (r < 0.69) grp.birch.push(tile);
+        else if (r < 0.75) grp.maple.push(tile);
+        else if (r < 0.80) grp.willow.push(tile);
+        else if (r < 0.85) grp.poplar.push(tile);
+        else if (r < 0.89) grp.jacaranda.push(tile);
+        else if (r < 0.93) grp.teal.push(tile);
+        else if (r < 0.96) grp.autPurple.push(tile);
+        else if (r < 0.98) grp.spruce.push(tile);
+        else               grp.lime.push(tile);
       });
 
       // Pine — classic evergreen cone
@@ -317,6 +331,88 @@ export class TerrainRenderer {
       // Birch — slender pale trunk, small bright canopy
       addTreeVariant(grp.birch,     birchTrunkGeom,  0xc8b48a, birchGeom,   0x85c46a, 0.70,
         { scaleMin: 0.75, scaleMax: 1.05 });
+      // Maple — deep crimson-red broad canopy
+      addTreeVariant(grp.maple,     normalTrunkGeom, 0x6b2c10, roundGeom,   0xa61c00, 0.80,
+        { scaleMin: 0.88, scaleMax: 1.25, fsx: 1.15, fsy: 0.90, fsz: 1.15 });
+      // Willow — wide drooping olive-sage canopy
+      addTreeVariant(grp.willow,    willowTrunkGeom, 0x5a3c18, wideGeom,    0x8b9e3a, 0.72,
+        { scaleMin: 0.90, scaleMax: 1.30, fsx: 1.65, fsy: 0.52, fsz: 1.65 });
+      // Poplar — tall slender bright-green column
+      addTreeVariant(grp.poplar,    tallTrunkGeom,   0x5c3010, narrowGeom,  0x3d8b37, 0.95,
+        { scaleMin: 0.92, scaleMax: 1.40, fsx: 0.55, fsy: 1.85, fsz: 0.55 });
+      // Jacaranda — lavender-purple wide flattened crown
+      addTreeVariant(grp.jacaranda, cherryTrunkGeom, 0x4a2010, wideGeom,    0xb57bee, 0.76,
+        { scaleMin: 0.80, scaleMax: 1.15, fsx: 1.35, fsy: 0.68, fsz: 1.35 });
+      // Teal / jade — vivid teal-green globe
+      addTreeVariant(grp.teal,      normalTrunkGeom, 0x3d2a10, roundGeom,   0x0d9488, 0.80,
+        { scaleMin: 0.82, scaleMax: 1.20 });
+      // Autumn purple — deep violet round canopy
+      addTreeVariant(grp.autPurple, normalTrunkGeom, 0x4a1a08, roundGeom,   0x7c3aed, 0.80,
+        { scaleMin: 0.82, scaleMax: 1.18 });
+      // Spruce — narrow blue-green cone, slightly bluer than dark fir
+      addTreeVariant(grp.spruce,    tallTrunkGeom,   0x4a2a0a, spruceGeom,  0x2f7a4f, 0.88,
+        { scaleMin: 0.92, scaleMax: 1.35 });
+      // Lime — bright acid-green round canopy
+      addTreeVariant(grp.lime,      normalTrunkGeom, 0x5c3010, roundGeom,   0x65a30d, 0.80,
+        { scaleMin: 0.80, scaleMax: 1.15 });
+
+      // ── Fruits scattered within canopies ──────────────────────────────────
+      // Helper: place up to maxF small fruit spheres within a canopy
+      const addFruits = (tiles, fruitGeom, fruitMat, foliageY, canopyR, maxF, rngBase,
+        { scaleMin: sm = 0.85, scaleMax: sx = 1.22 } = {}) => {
+        if (!tiles.length) return;
+        const fMesh = new THREE.InstancedMesh(fruitGeom, fruitMat, tiles.length * maxF);
+        let fi = 0;
+        tiles.forEach(tile => {
+          const ox  = (this._rng(tile.x, tile.z, 3) - 0.5) * 0.7;
+          const oz  = (this._rng(tile.x, tile.z, 4) - 0.5) * 0.7;
+          const cx  = tile.x * TILE_SIZE + TILE_SIZE / 2 + ox;
+          const cz  = tile.z * TILE_SIZE + TILE_SIZE / 2 + oz;
+          const sc  = sm + this._rng(tile.x, tile.z, 7) * (sx - sm);
+          const num = 2 + Math.floor(this._rng(tile.x, tile.z, rngBase) * (maxF - 1));
+          for (let k = 0; k < maxF; k++) {
+            if (k < num) {
+              const angle = this._rng(tile.x, tile.z, rngBase + 1 + k) * Math.PI * 2;
+              const rad   = this._rng(tile.x, tile.z, rngBase + 10 + k) * canopyR * sc * 0.85;
+              const fy    = foliageY * sc
+                          + (this._rng(tile.x, tile.z, rngBase + 20 + k) - 0.5) * canopyR * sc * 0.75;
+              dummy.position.set(cx + Math.cos(angle) * rad, surfY + fy, cz + Math.sin(angle) * rad);
+              dummy.rotation.set(0, angle, 0);
+              dummy.scale.setScalar(sc * 0.72);
+              dummy.updateMatrix();
+            } else {
+              dummy.scale.setScalar(0); dummy.updateMatrix();
+            }
+            fMesh.setMatrixAt(fi++, dummy.matrix);
+          }
+        });
+        fMesh.castShadow = true;
+        fMesh.instanceMatrix.needsUpdate = true;
+        this.scene.add(fMesh);
+        this._meshes.push(fMesh);
+      };
+
+      const appleGeom       = new THREE.SphereGeometry(0.048, 5, 4);
+      const cherryFruitGeom = new THREE.SphereGeometry(0.036, 5, 4);
+      const limeFruitGeom   = new THREE.SphereGeometry(0.052, 5, 4);
+      const appleMat        = new THREE.MeshLambertMaterial({ color: 0xdc2626 }); // red apple
+      const cherryMat       = new THREE.MeshLambertMaterial({ color: 0x7f0000 }); // dark cherry
+      const cherryDeepMat   = new THREE.MeshLambertMaterial({ color: 0x5a0020 }); // deep wine cherry
+      const cherryWhiteMat  = new THREE.MeshLambertMaterial({ color: 0xc04848 }); // blush cherry
+      const limeMat         = new THREE.MeshLambertMaterial({ color: 0x4ade80 }); // bright lime
+
+      // Apples on oak trees — 3–6 per tree, within round canopy (r=0.36, fY=0.80)
+      addFruits(grp.oak,        appleGeom,       appleMat,       0.80, 0.36, 6, 200);
+      // Cherries on cherry blossom trees — 4–7 per tree
+      addFruits(grp.cherry,     cherryFruitGeom, cherryMat,      0.78, 0.42, 7, 210,
+        { scaleMin: 0.80, scaleMax: 1.10 });
+      addFruits(grp.cherryDeep, cherryFruitGeom, cherryDeepMat,  0.80, 0.46, 7, 220,
+        { scaleMin: 0.85, scaleMax: 1.18 });
+      addFruits(grp.cherryWhite,cherryFruitGeom, cherryWhiteMat, 0.76, 0.38, 5, 230,
+        { scaleMin: 0.75, scaleMax: 1.08 });
+      // Limes on lime trees — 3–5 per tree
+      addFruits(grp.lime,       limeFruitGeom,   limeMat,        0.80, 0.36, 5, 240,
+        { scaleMin: 0.80, scaleMax: 1.15 });
     }
 
     // ── Rocks on STONE tiles ──────────────────────────────────────────────
@@ -589,6 +685,127 @@ export class TerrainRenderer {
         this._meshes.push(mRockMesh);
       }
     }
+
+    // ── Medicinal herb clusters (FOREST + water-adjacent GRASS) ───────────
+    const herbTiles = [
+      ...buckets[TileType.FOREST],
+      ...buckets[TileType.GRASS],
+    ].filter(t => t.herbs > 0);
+    if (herbTiles.length > 0) {
+      const herbsPerTile = 3;
+      const headGeom = new THREE.SphereGeometry(0.030, 4, 3);
+      const stemGeom = new THREE.CylinderGeometry(0.007, 0.009, 0.07, 4);
+      const headMat  = new THREE.MeshLambertMaterial({ color: 0xd97ef5 });
+      const stemMat  = new THREE.MeshLambertMaterial({ color: 0x6db56d });
+      const headMesh = new THREE.InstancedMesh(headGeom, headMat, herbTiles.length * herbsPerTile);
+      const stemMesh = new THREE.InstancedMesh(stemGeom, stemMat, herbTiles.length * herbsPerTile);
+      const surfY = TerrainRenderer.surfaceY(TileType.GRASS);
+      let hi = 0;
+      herbTiles.forEach(tile => {
+        const tileY = TerrainRenderer.surfaceY(tile.type);
+        for (let k = 0; k < herbsPerTile; k++) {
+          const ox = (this._rng(tile.x, tile.z, 310 + k * 2) - 0.5) * 1.1;
+          const oz = (this._rng(tile.x, tile.z, 311 + k * 2) - 0.5) * 1.1;
+          const bx = tile.x * TILE_SIZE + TILE_SIZE / 2 + ox;
+          const bz = tile.z * TILE_SIZE + TILE_SIZE / 2 + oz;
+          dummy.position.set(bx, tileY + 0.10, bz);
+          dummy.scale.setScalar(1);
+          dummy.rotation.set(0, this._rng(tile.x + k, tile.z, 312) * Math.PI * 2, 0);
+          dummy.updateMatrix();
+          headMesh.setMatrixAt(hi, dummy.matrix);
+          dummy.position.set(bx, tileY + 0.035, bz);
+          dummy.updateMatrix();
+          stemMesh.setMatrixAt(hi, dummy.matrix);
+          hi++;
+        }
+      });
+      headMesh.instanceMatrix.needsUpdate = true;
+      stemMesh.instanceMatrix.needsUpdate = true;
+      this.scene.add(headMesh);
+      this.scene.add(stemMesh);
+      this._meshes.push(headMesh);
+      this._meshes.push(stemMesh);
+      this._herbHeadMesh = headMesh;
+      this._herbTiles    = herbTiles;
+    }
+
+    // ── Mushroom rings (FOREST tiles) ────────────────────────────────────
+    const mushroomTiles = buckets[TileType.FOREST].filter(t => t.mushrooms > 0);
+    if (mushroomTiles.length > 0) {
+      const shroomsPerTile = 3;
+      const capGeom  = new THREE.SphereGeometry(0.065, 6, 4);
+      const stemGeom2 = new THREE.CylinderGeometry(0.012, 0.018, 0.06, 5);
+      const capColors = [0xc8860a, 0x7a3d0a, 0xd4b483];
+      const stemMat2 = new THREE.MeshLambertMaterial({ color: 0xf5f0e0 });
+      const capMeshes = capColors.map(col =>
+        new THREE.InstancedMesh(capGeom, new THREE.MeshLambertMaterial({ color: col }), mushroomTiles.length)
+      );
+      const stemMesh2 = new THREE.InstancedMesh(stemGeom2, stemMat2, mushroomTiles.length * shroomsPerTile);
+      const mSurfY = TerrainRenderer.surfaceY(TileType.FOREST);
+      let si2 = 0;
+      mushroomTiles.forEach((tile, i) => {
+        const ox = (this._rng(tile.x, tile.z, 320) - 0.5) * 1.0;
+        const oz = (this._rng(tile.x, tile.z, 321) - 0.5) * 1.0;
+        const bx = tile.x * TILE_SIZE + TILE_SIZE / 2 + ox;
+        const bz = tile.z * TILE_SIZE + TILE_SIZE / 2 + oz;
+        const ci2 = Math.floor(this._rng(tile.x, tile.z, 322) * capColors.length);
+        for (let k = 0; k < shroomsPerTile; k++) {
+          const mx = bx + (this._rng(tile.x + k, tile.z, 323) - 0.5) * 0.6;
+          const mz = bz + (this._rng(tile.x, tile.z + k, 324) - 0.5) * 0.6;
+          dummy.position.set(mx, mSurfY + 0.03, mz);
+          dummy.scale.setScalar(1);
+          dummy.rotation.set(0, 0, 0);
+          dummy.updateMatrix();
+          stemMesh2.setMatrixAt(si2, dummy.matrix);
+          dummy.position.set(mx, mSurfY + 0.07, mz);
+          dummy.scale.set(1, 0.45, 1);
+          dummy.updateMatrix();
+          capMeshes[ci2].setMatrixAt(i, dummy.matrix);
+          si2++;
+        }
+      });
+      stemMesh2.instanceMatrix.needsUpdate = true;
+      this.scene.add(stemMesh2);
+      this._meshes.push(stemMesh2);
+      for (const cm of capMeshes) {
+        cm.instanceMatrix.needsUpdate = true;
+        this.scene.add(cm);
+        this._meshes.push(cm);
+      }
+      this._mushroomCapMeshes = capMeshes;
+      this._mushroomTiles     = mushroomTiles;
+    }
+
+    // ── Flint shards (STONE tiles) ───────────────────────────────────────
+    const flintTiles = buckets[TileType.STONE].filter(t => t.flint === 1);
+    if (flintTiles.length > 0) {
+      const shardGeom = new THREE.TetrahedronGeometry(0.055, 0);
+      const shardMat  = new THREE.MeshLambertMaterial({ color: 0xb8d0e8 });
+      const shardMesh = new THREE.InstancedMesh(shardGeom, shardMat, flintTiles.length);
+      const fSurfY = TerrainRenderer.surfaceY(TileType.STONE);
+      flintTiles.forEach((tile, i) => {
+        const ox = (this._rng(tile.x, tile.z, 360) - 0.5) * 1.0;
+        const oz = (this._rng(tile.x, tile.z, 361) - 0.5) * 1.0;
+        dummy.position.set(
+          tile.x * TILE_SIZE + TILE_SIZE / 2 + ox,
+          fSurfY + 0.04,
+          tile.z * TILE_SIZE + TILE_SIZE / 2 + oz,
+        );
+        dummy.scale.set(1, 0.4, 0.85);
+        dummy.rotation.set(
+          (this._rng(tile.x, tile.z, 362) - 0.5) * 0.4,
+          this._rng(tile.x, tile.z, 363) * Math.PI * 2,
+          (this._rng(tile.x, tile.z, 364) - 0.5) * 0.4,
+        );
+        dummy.updateMatrix();
+        shardMesh.setMatrixAt(i, dummy.matrix);
+      });
+      shardMesh.instanceMatrix.needsUpdate = true;
+      this.scene.add(shardMesh);
+      this._meshes.push(shardMesh);
+      this._flintMesh  = shardMesh;
+      this._flintTiles = flintTiles;
+    }
   }
 
   _buildAnimals(buckets) {
@@ -625,101 +842,189 @@ export class TerrainRenderer {
       ? deepTiles
       : [...waterTiles, ...deepWaterTiles].filter(t => this._rng(t.x, t.z, 21) < 0.24);
 
-    // Koi carp: round deep-bodied pond fish; deep fish: streamlined ocean fish
-    const fish1Geom = new THREE.SphereGeometry(0.11, 8, 5);
-    const fish2Geom = new THREE.SphereGeometry(0.15, 8, 5);
-    // Dorsal fins
-    const koiDorsalGeom = new THREE.ConeGeometry(0.065, 0.18, 4);
-    const deepFinGeom   = new THREE.ConeGeometry(0.052, 0.13, 3);
-    // Forked tail lobes (shared)
-    const fishTailGeom  = new THREE.SphereGeometry(0.09, 5, 4);
+    // ── Fish geometry helpers ─────────────────────────────────────────────────
+    // 3D torpedo fish body: elongated sphere with rear taper (peduncle) and snout.
+    //   len = body half-length (Z), ht = half-height (Y), wid = half-width (X)
+    //   Snout at +Z, tail peduncle at -Z.
+    const _mkFishBody = (len, ht, wid) => {
+      const g = new THREE.SphereGeometry(0.5, 12, 8);
+      const pos = g.attributes.position;
+      for (let vi = 0; vi < pos.count; vi++) {
+        const x = pos.getX(vi);
+        const y = pos.getY(vi);
+        const z = pos.getZ(vi); // +0.5=snout, -0.5=peduncle
+        // Strongly taper toward tail peduncle
+        const rearT  = z < 0 ? Math.max(0.10, 1.0 + z * 1.55) : 1.0;
+        // Mildly taper snout
+        const frontT = z > 0.18 ? Math.max(0.16, 1.0 - (z - 0.18) * 2.0) : 1.0;
+        const t = Math.min(rearT, frontT);
+        pos.setXYZ(vi, x * wid * 2 * t, y * ht * 2 * t, z * len * 2);
+      }
+      pos.needsUpdate = true;
+      g.computeVertexNormals();
+      return g;
+    };
+    // One lobe of a forked caudal fin, lying flat in XZ plane.
+    //   w = lobe spread, depth = lobe length (toward -Z), thick = fin thickness (Y)
+    const _mkCaudalLobe = (w, depth, thick) => {
+      const s = new THREE.Shape();
+      s.moveTo(0, 0);
+      s.bezierCurveTo(w * 0.55, -depth * 0.12, w * 1.08, -depth * 0.55, w, -depth);
+      s.bezierCurveTo(w * 0.45, -depth * 0.82, w * 0.08, -depth * 0.55, 0, -depth * 0.42);
+      s.closePath();
+      const geom = new THREE.ExtrudeGeometry(s, { depth: thick, bevelEnabled: false });
+      geom.applyMatrix4(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
+      geom.applyMatrix4(new THREE.Matrix4().makeTranslation(0, thick * 0.5, 0));
+      return geom;
+    };
 
-    // Shallow fish (koi): quick, small wander radius
+    // Shallow: round-bodied (bream / discus)
+    const fish1BodyGeom  = _mkFishBody(0.13, 0.07, 0.05);
+    const fish1LobeGeom  = _mkCaudalLobe(0.055, 0.068, 0.008);
+    // Deep: streamlined (tuna / barracuda)
+    const fish2BodyGeom  = _mkFishBody(0.19, 0.045, 0.035);
+    const fish2LobeGeom  = _mkCaudalLobe(0.042, 0.082, 0.006);
+    // Golden koi: fat, deep-bodied
+    const fish3BodyGeom  = _mkFishBody(0.12, 0.085, 0.065);
+    const fish3LobeGeom  = _mkCaudalLobe(0.065, 0.065, 0.010);
+
+    // Shallow fish (vibrant, quick, near shore)
     const shallowFishConfig = {
       label: 'Shallow Fish', icon: '🐟',
       description: 'A small fish that hugs the shoreline.',
-      driftRadius: 0.0, driftSpeed: 0, bobAmount: 0.018, bobSpeed: 3.5,
-      mobile: true, moveSpeed: 0.55, tileType: TileType.WATER, wanderRadius: 3,
-      wagAmp: 0.13, wagFreq: 4.0, turnSpeed: 5.5, burstCoast: true,
+      driftRadius: 0.0, driftSpeed: 0, bobAmount: 0.020, bobSpeed: 3.8,
+      mobile: true, moveSpeed: 0.58, tileType: TileType.WATER, wanderRadius: 3,
+      wagAmp: 0.19, wagFreq: 4.5, turnSpeed: 6.0, burstCoast: true, burstMult: 3.2,
+      fishSwim: true, swimCurveAmp: 0.20, swimCurveFreq: 1.7,
+    };
+    // Golden koi: ornate, jewel-toned, hugs the shallowest water
+    const goldenFishConfig = {
+      label: 'Golden Fish', icon: '🐟',
+      description: 'A shimmering golden fish darting through shallow water.',
+      driftRadius: 0.0, driftSpeed: 0, bobAmount: 0.024, bobSpeed: 4.5,
+      mobile: true, moveSpeed: 0.68, tileType: TileType.WATER, wanderRadius: 2,
+      wagAmp: 0.24, wagFreq: 5.2, turnSpeed: 7.5, burstCoast: true, burstMult: 3.8,
+      fishSwim: true, swimCurveAmp: 0.28, swimCurveFreq: 2.3,
     };
     // Deep fish: slow, large wander radius
     const deepFishConfig = {
       label: 'Deep Fish', icon: '🐠',
       description: 'A large fish that roams the open ocean.',
-      driftRadius: 0.0, driftSpeed: 0, bobAmount: 0.006, bobSpeed: 1.2,
-      mobile: true, moveSpeed: 0.22, tileTypes: [TileType.DEEP_WATER, TileType.WATER], wanderRadius: 9,
-      wagAmp: 0.09, wagFreq: 2.8, turnSpeed: 3.0, burstCoast: true,
+      driftRadius: 0.0, driftSpeed: 0, bobAmount: 0.007, bobSpeed: 1.2,
+      mobile: true, moveSpeed: 0.24, tileTypes: [TileType.DEEP_WATER, TileType.WATER], wanderRadius: 9,
+      wagAmp: 0.12, wagFreq: 2.9, turnSpeed: 3.2, burstCoast: true, burstMult: 2.6,
+      fishSwim: true, swimCurveAmp: 0.10, swimCurveFreq: 0.8,
     };
 
+    // Helper: build an InstancedMesh with per-instance colour, register it and return it
+    const _mkFishMesh = (geom, count) =>
+      new THREE.InstancedMesh(geom, new THREE.MeshLambertMaterial({ color: 0xffffff }), count);
+    const _colourFish = (meshes, idx, col) => meshes.forEach(m => m.setColorAt(idx, col));
+
     if (fish1Tiles.length > 0) {
-      // White base so setColorAt drives colour fully
-      const fish1Mat  = new THREE.MeshLambertMaterial({ color: 0xffffff });
-      const finMat1   = new THREE.MeshLambertMaterial({ color: 0xcc5500 });
-      const tailMat1  = new THREE.MeshLambertMaterial({ color: 0xcc5500 });
-      const fish1Mesh = new THREE.InstancedMesh(fish1Geom, fish1Mat, fish1Tiles.length);
-      const fin1Mesh  = new THREE.InstancedMesh(koiDorsalGeom, finMat1, fish1Tiles.length);
-      const tailL1    = new THREE.InstancedMesh(fishTailGeom, tailMat1, fish1Tiles.length);
-      const tailR1    = new THREE.InstancedMesh(fishTailGeom, tailMat1, fish1Tiles.length);
-      // Koi colour palette: orange, gold, red, white, black, cream
-      const koiPalette = [0xe05515, 0xf09000, 0xe81808, 0xf8f4f0, 0x181818, 0xf0c060, 0xd04010];
-      const _kc = new THREE.Color();
+      const n = fish1Tiles.length;
+      const fish1Body  = _mkFishMesh(fish1BodyGeom, n);
+      const fish1TailL = _mkFishMesh(fish1LobeGeom, n);
+      const fish1TailR = _mkFishMesh(fish1LobeGeom, n);
+      // Extended tropical palette: 16 vivid reef colours
+      const shallowPalette = [
+        0x00c8b4, 0xff5533, 0xffcc00, 0x66dd00,
+        0xff2288, 0x9933ff, 0x00aaff, 0xff8800,
+        0xff6060, 0x00ffcc, 0xffaa00, 0xee00cc,
+        0x44ddff, 0xaaff00, 0xff3366, 0x00bbff,
+      ];
+      const _c1 = new THREE.Color();
       const instances1 = fish1Tiles.map((tile, idx) => {
         const ox   = (this._rng(tile.x, tile.z, 22) - 0.5) * 0.8;
         const oz   = (this._rng(tile.x, tile.z, 23) - 0.5) * 0.8;
         const seed = this._rng(tile.x, tile.z, 24) * Math.PI * 2;
         const tx   = tile.x + 0.5 + ox * 0.5;
         const tz   = tile.z + 0.5 + oz * 0.5;
-        const ci   = Math.floor(this._rng(tile.x, tile.z, 28) * koiPalette.length);
-        _kc.setHex(koiPalette[ci]);
-        fish1Mesh.setColorAt(idx, _kc);
-        // Tint tail/fin to a darker shade of the same hue
-        return {
-          x: tx, z: tz, targetX: tx, targetZ: tz,
-          homeX: tile.x, homeZ: tile.z,
-          baseY: surfY(TileType.WATER) + 0.02,
-          scale: [1.8, 0.72, 0.82],
-          rotY: seed, seed,
-        };
+        const ci   = Math.floor(this._rng(tile.x, tile.z, 28) * shallowPalette.length);
+        _c1.setHex(shallowPalette[ci]);
+        _colourFish([fish1Body, fish1TailL, fish1TailR], idx, _c1);
+        const sv = 1.10 + this._rng(tile.x, tile.z, 29) * 0.65;
+        return { x: tx, z: tz, targetX: tx, targetZ: tz, homeX: tile.x, homeZ: tile.z,
+                 baseY: surfY(TileType.WATER) + 0.02, scale: [sv, sv, sv], rotY: seed, seed };
       });
-      fish1Mesh.instanceColor.needsUpdate = true;
-      fin1Mesh.castShadow = false;
-      tailL1.castShadow  = false;
-      tailR1.castShadow  = false;
-      addAnimated(fish1Mesh, instances1, shallowFishConfig, [
-        { mesh: fin1Mesh, offset: 0,    fin: true },
-        { mesh: tailL1,   offset: -0.5, fishTailL: true },
-        { mesh: tailR1,   offset: -0.5, fishTailR: true },
+      [fish1Body, fish1TailL, fish1TailR].forEach(m => {
+        m.instanceColor.needsUpdate = true; m.castShadow = false;
+      });
+      addAnimated(fish1Body, instances1, shallowFishConfig, [
+        { mesh: fish1TailL, fishTailL: true, offset: 0.13, tailSplay: 0.20 },
+        { mesh: fish1TailR, fishTailR: true, offset: 0.13, tailSplay: 0.20 },
       ]);
     }
+
     if (fish2Tiles.length > 0) {
-      const fish2Mat  = new THREE.MeshLambertMaterial({ color: 0x5a8098 });
-      const finMat2   = new THREE.MeshLambertMaterial({ color: 0x3a5a6e });
-      const tailMat2  = new THREE.MeshLambertMaterial({ color: 0x3a5a6e });
-      const fish2Mesh = new THREE.InstancedMesh(fish2Geom, fish2Mat, fish2Tiles.length);
-      const fin2Mesh  = new THREE.InstancedMesh(deepFinGeom, finMat2, fish2Tiles.length);
-      const tailL2    = new THREE.InstancedMesh(fishTailGeom, tailMat2, fish2Tiles.length);
-      const tailR2    = new THREE.InstancedMesh(fishTailGeom, tailMat2, fish2Tiles.length);
-      const instances2 = fish2Tiles.map((tile) => {
+      const n = fish2Tiles.length;
+      const fish2Body  = _mkFishMesh(fish2BodyGeom, n);
+      const fish2TailL = _mkFishMesh(fish2LobeGeom, n);
+      const fish2TailR = _mkFishMesh(fish2LobeGeom, n);
+      // Ocean palette: cobalt, teal, jade, cyan, deep-purple, turquoise, midnight, coral
+      const deepPalette = [
+        0x1166dd, 0x009988, 0x226644, 0x00ccdd,
+        0x5511aa, 0x00bbcc, 0x003399, 0xcc4422,
+      ];
+      const _c2 = new THREE.Color();
+      const instances2 = fish2Tiles.map((tile, idx) => {
         const ox   = (this._rng(tile.x, tile.z, 25) - 0.5) * 0.6;
         const oz   = (this._rng(tile.x, tile.z, 26) - 0.5) * 0.6;
         const seed = this._rng(tile.x, tile.z, 27) * Math.PI * 2;
         const tx   = tile.x + 0.5 + ox * 0.5;
         const tz   = tile.z + 0.5 + oz * 0.5;
-        return {
-          x: tx, z: tz, targetX: tx, targetZ: tz,
-          homeX: tile.x, homeZ: tile.z,
-          baseY: surfY(TileType.WATER) - 0.01,
-          scale: [2.1, 0.55, 0.72],
-          rotY: seed, seed,
-        };
+        const ci   = Math.floor(this._rng(tile.x, tile.z, 28) * deepPalette.length);
+        _c2.setHex(deepPalette[ci]);
+        _colourFish([fish2Body, fish2TailL, fish2TailR], idx, _c2);
+        const sv = 1.20 + this._rng(tile.x, tile.z, 29) * 0.65;
+        return { x: tx, z: tz, targetX: tx, targetZ: tz, homeX: tile.x, homeZ: tile.z,
+                 baseY: surfY(TileType.WATER) - 0.01, scale: [sv, sv, sv], rotY: seed, seed };
       });
-      fin2Mesh.castShadow = false;
-      tailL2.castShadow   = false;
-      tailR2.castShadow   = false;
-      addAnimated(fish2Mesh, instances2, deepFishConfig, [
-        { mesh: fin2Mesh, offset: 0,    fin: true },
-        { mesh: tailL2,   offset: -0.5, fishTailL: true },
-        { mesh: tailR2,   offset: -0.5, fishTailR: true },
+      [fish2Body, fish2TailL, fish2TailR].forEach(m => {
+        m.instanceColor.needsUpdate = true; m.castShadow = false;
+      });
+      addAnimated(fish2Body, instances2, deepFishConfig, [
+        { mesh: fish2TailL, fishTailL: true, offset: 0.19, tailSplay: 0.18 },
+        { mesh: fish2TailR, fishTailR: true, offset: 0.19, tailSplay: 0.18 },
+      ]);
+    }
+
+    // Golden koi — shore-hugging, jewel-toned, lively
+    const goldenTiles = waterTiles.filter(t =>
+      this._rng(t.x, t.z, 36) < 0.28 &&
+      (this.world.hasAdjacentType(t.x, t.z, TileType.GRASS) ||
+       this.world.hasAdjacentType(t.x, t.z, TileType.FOREST))
+    );
+    if (goldenTiles.length > 0) {
+      const n = goldenTiles.length;
+      const fish3Body  = _mkFishMesh(fish3BodyGeom, n);
+      const fish3TailL = _mkFishMesh(fish3LobeGeom, n);
+      const fish3TailR = _mkFishMesh(fish3LobeGeom, n);
+      // Golden palette: pure gold, amber, warm gold, pale gold, deep amber, rose-gold, honey
+      const goldenPalette = [
+        0xFFD700, 0xFFA500, 0xFFCC33, 0xFFE066,
+        0xE8960C, 0xFFB347, 0xF4C430, 0xFF9000,
+      ];
+      const _c3 = new THREE.Color();
+      const instances3 = goldenTiles.map((tile, idx) => {
+        const ox   = (this._rng(tile.x, tile.z, 37) - 0.5) * 0.8;
+        const oz   = (this._rng(tile.x, tile.z, 38) - 0.5) * 0.8;
+        const seed = this._rng(tile.x, tile.z, 39) * Math.PI * 2;
+        const tx   = tile.x + 0.5 + ox * 0.5;
+        const tz   = tile.z + 0.5 + oz * 0.5;
+        const ci   = Math.floor(this._rng(tile.x, tile.z, 40) * goldenPalette.length);
+        _c3.setHex(goldenPalette[ci]);
+        _colourFish([fish3Body, fish3TailL, fish3TailR], idx, _c3);
+        const sv = 0.95 + this._rng(tile.x, tile.z, 41) * 0.60;
+        return { x: tx, z: tz, targetX: tx, targetZ: tz, homeX: tile.x, homeZ: tile.z,
+                 baseY: surfY(TileType.WATER) + 0.02, scale: [sv, sv, sv], rotY: seed, seed };
+      });
+      [fish3Body, fish3TailL, fish3TailR].forEach(m => {
+        m.instanceColor.needsUpdate = true; m.castShadow = false;
+      });
+      addAnimated(fish3Body, instances3, goldenFishConfig, [
+        { mesh: fish3TailL, fishTailL: true, offset: 0.12, tailSplay: 0.25 },
+        { mesh: fish3TailR, fishTailR: true, offset: 0.12, tailSplay: 0.25 },
       ]);
     }
 
@@ -1131,14 +1436,29 @@ export class TerrainRenderer {
             if (config.burstCoast) {
               if (inst._burstRemain > 0) {
                 inst._burstRemain = Math.max(0, inst._burstRemain - realDelta);
-                spd = moveSpeed * 2.4;
+                spd = moveSpeed * (config.burstMult ?? 2.4);
               } else {
                 spd = moveSpeed * 0.22; // gentle glide
+                // Fish spontaneously dart: random re-burst during coast
+                if (config.fishSwim && Math.random() < realDelta * 0.18) {
+                  inst._burstRemain = 0.10 + Math.random() * 0.22;
+                }
               }
             }
             const move = Math.min(spd * realDelta, dist);
             inst.x += (dx / dist) * move;
             inst.z += (dz / dist) * move;
+            // Fish-swim: sinusoidal lateral drift gives S-curve swimming paths.
+            // Amplitude fades to zero as fish nears its target so it arrives cleanly.
+            if (config.fishSwim && dist > 0.01) {
+              const perpX =  dz / dist;
+              const perpZ = -dx / dist;
+              const fade  = Math.min(1, dist * 4);  // fades over last 0.25 tiles
+              const curve = Math.sin(t * config.swimCurveFreq + inst.seed * 7.39)
+                          * config.swimCurveAmp * realDelta * fade;
+              inst.x += perpX * curve;
+              inst.z += perpZ * curve;
+            }
             // Smooth turn toward target
             const targetRY = Math.atan2(inst.targetX - inst.x, inst.targetZ - inst.z);
             if (config.crabWalk) {
@@ -1391,20 +1711,65 @@ export class TerrainRenderer {
             dummy.updateMatrix();
             part.mesh.setMatrixAt(i, dummy.matrix);
           } else if (part.fishTailL || part.fishTailR) {
-            // Forked tail lobe — spread behind the body and wag
+            // Forked caudal fin lobe — placed behind the body and beats side-to-side
             const side = part.fishTailL ? 1 : -1;
-            const tailX = px - Math.sin(ry + wag) * 0.5;
-            const tailZ = pz - Math.cos(ry + wag) * 0.5;
+            // Use part.offset (world units), scaled with fish size
+            const tailDist = (part.offset ?? 0.18) * inst.scale[2];
+            const tailX = px - Math.sin(ry + wag) * tailDist;
+            const tailZ = pz - Math.cos(ry + wag) * tailDist;
             // Tail beats faster during burst, slow gentle sweep when coasting
             const tailBeat = inst._burstRemain > 0
-              ? wagFreq * 1.4
-              : (wagAmp > 0 ? wagFreq * 0.6 : 3.5);
-            const tailWag = Math.sin(t * tailBeat + phase) * 0.22;
+              ? wagFreq * 1.5
+              : (wagAmp > 0 ? wagFreq * 0.55 : 3.0);
+            const tailWag = Math.sin(t * tailBeat + phase) * 0.30;
             dummy.position.set(tailX, py, tailZ);
-            dummy.scale.set(1.55, 0.08, 0.9);
+            dummy.scale.set(inst.scale[0], inst.scale[1], inst.scale[2]);
             dummy.rotation.order = 'YXZ';
-            dummy.rotation.y = ry + wag + side * 0.42 + tailWag * side;
-            dummy.rotation.x = -Math.PI / 2 + 0.08;
+            dummy.rotation.y = ry + wag + side * (part.tailSplay ?? 0.22) + tailWag * side;
+            dummy.rotation.x = 0;
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.fishDorsal) {
+            // Dorsal fin — upright on mid-back, rides body wag
+            const dx = px - Math.sin(ry) * (part.offset ?? 0);
+            const dz = pz - Math.cos(ry) * (part.offset ?? 0);
+            dummy.position.set(dx, py + inst.scale[1] * (part.finYOff ?? 0.08), dz);
+            dummy.scale.set(
+              inst.scale[0] * (part.finW ?? 0.55),
+              inst.scale[1] * (part.finH ?? 0.65),
+              0.012
+            );
+            dummy.rotation.order = 'YXZ';
+            dummy.rotation.y = ry + wag * 0.6;
+            dummy.rotation.x = 0.45; // swept back
+            dummy.rotation.z = 0;
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.fishPecL || part.fishPecR) {
+            // Pectoral fins — fan out perpendicular to body, slightly forward of center
+            const side = part.fishPecL ? 1 : -1;
+            const perpX = Math.cos(ry) * side;
+            const perpZ = -Math.sin(ry) * side;
+            const fwdX  = Math.sin(ry) * 0.10;
+            const fwdZ  = Math.cos(ry) * 0.10;
+            const fx = px + perpX * inst.scale[0] * 0.42 + fwdX;
+            const fz = pz + perpZ * inst.scale[0] * 0.42 + fwdZ;
+            dummy.position.set(fx, py - inst.scale[1] * 0.06, fz);
+            dummy.scale.set(inst.scale[0] * 0.88, inst.scale[1] * 0.20, inst.scale[2] * 0.52);
+            dummy.rotation.order = 'YXZ';
+            dummy.rotation.y = ry + side * 0.40;
+            dummy.rotation.x = 0.22;
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.fishEye) {
+            // Small dark eye at front-upper side of body
+            const ex = px + Math.sin(ry) * inst.scale[2] * 0.50 + Math.cos(ry) * inst.scale[0] * 0.32;
+            const ez = pz + Math.cos(ry) * inst.scale[2] * 0.50 - Math.sin(ry) * inst.scale[0] * 0.32;
+            dummy.position.set(ex, py + inst.scale[1] * 0.28, ez);
+            dummy.scale.set(1, 1, 1);
+            dummy.rotation.order = 'YXZ';
+            dummy.rotation.y = ry;
+            dummy.rotation.x = 0;
             dummy.updateMatrix();
             part.mesh.setMatrixAt(i, dummy.matrix);
           } else if (part.crabClawL || part.crabClawR) {
@@ -1572,6 +1937,46 @@ export class TerrainRenderer {
       this._meshes.push(spikeMesh);
       this._glacierSpikeMesh = spikeMesh;
       this._glacierSpikeTiles = spikeTiles;
+    }
+  }
+
+  /** Fade herb and mushroom meshes to grey as tiles deplete */
+  updateResources(world) {
+    const color = new THREE.Color();
+    if (this._herbHeadMesh && this._herbTiles) {
+      const fullColor  = new THREE.Color(0xd97ef5);
+      const deplColor  = new THREE.Color(0x6b7355);
+      this._herbTiles.forEach((tile, i) => {
+        const t = world.tiles[tile.z][tile.x];
+        const v = t.herbs ?? 0;
+        color.lerpColors(deplColor, fullColor, v);
+        for (let k = 0; k < 3; k++)
+          this._herbHeadMesh.setColorAt(i * 3 + k, color);
+      });
+      this._herbHeadMesh.instanceColor.needsUpdate = true;
+    }
+    if (this._mushroomCapMeshes && this._mushroomTiles) {
+      const capColors = [new THREE.Color(0xc8860a), new THREE.Color(0x7a3d0a), new THREE.Color(0xd4b483)];
+      const deplColor = new THREE.Color(0x6b7355);
+      this._mushroomTiles.forEach((tile, i) => {
+        const t = world.tiles[tile.z][tile.x];
+        const v = t.mushrooms ?? 0;
+        const ci = Math.floor((Math.sin(tile.x * 127.1 + tile.z * 311.7 + 322 * 74.5) * 0.5 + 0.5) * capColors.length);
+        color.lerpColors(deplColor, capColors[ci % capColors.length], v);
+        this._mushroomCapMeshes[ci % capColors.length].setColorAt(i, color);
+      });
+      for (const cm of this._mushroomCapMeshes)
+        if (cm.instanceColor) cm.instanceColor.needsUpdate = true;
+    }
+    if (this._flintMesh && this._flintTiles) {
+      const fullColor = new THREE.Color(0xb8d0e8);
+      const goneColor = new THREE.Color(0x6e6e6e);
+      this._flintTiles.forEach((tile, i) => {
+        const t = world.tiles[tile.z][tile.x];
+        color.lerpColors(goneColor, fullColor, t.flint ?? 0);
+        this._flintMesh.setColorAt(i, color);
+      });
+      this._flintMesh.instanceColor.needsUpdate = true;
     }
   }
 

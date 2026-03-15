@@ -28,6 +28,8 @@ export class ConceptGraph {
       let prob = concept.discovery_probability * agent.curiosity * delta;
       if (agent.knowledge.has('curiosity_culture')) prob *= 1.2;
       if (agent.task === 'scout') prob *= 1.15;
+      // Flint shard in pocket: greatly boosts stone_tools discovery
+      if (id === 'stone_tools' && agent._hasFlint) prob *= 8;
       // Fire: lightning-struck forest greatly boosts discovery
       if (id === 'fire' && world.naturalFires) {
         const key = `${tile.x},${tile.z}`;
@@ -39,6 +41,7 @@ export class ConceptGraph {
       }
       if (Math.random() < prob) {
         this._grant(agent, id);
+        if (id === 'stone_tools') agent._hasFlint = false;
         this.events.push({ type: 'discovery', agentId: agent.id, agentName: agent.name, conceptId: id });
         return id;
       }
@@ -110,6 +113,7 @@ export class ConceptGraph {
       if (cond.type === 'tile_type' && tile.type !== cond.value) return false;
       if (cond.type === 'has_concept' && !agent.knowledge.has(cond.value)) return false;
       if (cond.type === 'adjacent_to' && (!world || !world.hasAdjacentType(tile.x, tile.z, cond.value))) return false;
+      if (cond.type === 'tile_has_resource' && !(tile[cond.value] > 0.1)) return false;
       if (cond.type === 'population_nearby') {
         // Count live agents within 6 tiles
         const count = allAgents.filter(a =>

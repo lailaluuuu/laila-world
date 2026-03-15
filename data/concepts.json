@@ -205,12 +205,15 @@
     "description": "Knowledge of healing herbs and remedies extends life and eases sickness.",
     "prerequisites": ["cooking", "shelter"],
     "discovery_conditions": [
-      { "type": "tile_type", "value": "FOREST" }
+      { "type": "tile_type", "value": "FOREST" },
+      { "type": "tile_has_resource", "value": "herbs" }
     ],
-    "discovery_probability": 0.00025,
+    "discovery_probability": 0.00035,
     "spread_rate": 0.04,
     "effects": {
-      "max_age_bonus": 0.25
+      "max_age_bonus": 0.25,
+      "herb_healing": true,
+      "vitality_regen": 0.005
     }
   },
   {
@@ -604,6 +607,40 @@
     "effects": {
       "discovery_bonus": 1.25,
       "curiosity_bonus": 0.15
+    }
+  },
+  {
+    "id": "horse_taming",
+    "name": "Horse Taming",
+    "era": 2,
+    "icon": "🐎",
+    "description": "Reading a horse's moods and earning its trust — then riding it across the land at great speed.",
+    "prerequisites": ["animal_domestication"],
+    "discovery_conditions": [
+      { "type": "has_concept", "value": "animal_domestication" }
+    ],
+    "discovery_probability": 0.00022,
+    "spread_rate": 0.04,
+    "effects": {
+      "can_ride_horses": true
+    }
+  },
+  {
+    "id": "herbalism",
+    "name": "Herbalism",
+    "era": 2,
+    "icon": "🍃",
+    "description": "Deep knowledge of plants and their properties — which heal, which nourish, which protect against sickness.",
+    "prerequisites": ["medicine"],
+    "discovery_conditions": [
+      { "type": "has_concept", "value": "medicine" },
+      { "type": "tile_has_resource", "value": "herbs" }
+    ],
+    "discovery_probability": 0.00028,
+    "spread_rate": 0.04,
+    "effects": {
+      "max_age_bonus": 0.10,
+      "herb_healing_mult": 1.5
     }
   }
 ]
