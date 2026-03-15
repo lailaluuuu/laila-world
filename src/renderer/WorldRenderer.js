@@ -79,6 +79,9 @@ export class WorldRenderer {
     // ── Rainbow ────────────────────────────────────────────────────────
     this._buildRainbow();
 
+    // ── Stars / shooting star ──────────────────────────────────────────
+    this._buildStars();
+
     // ── Resize ─────────────────────────────────────────────────────────
     window.addEventListener('resize', () => this._handleResize());
   }
@@ -128,6 +131,109 @@ export class WorldRenderer {
     this.scene.add(group);
     this._rainbowGroup = group;
     this._rainbowState = { phase: 'hidden', opacity: 0, timer: 0, duration: 0 };
+  }
+
+  _buildStars() {
+    const COUNT = 420;
+    const pos = new Float32Array(COUNT * 3);
+    const R = 180;
+    for (let i = 0; i < COUNT; i++) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi   = Math.acos(1 - Math.random() * 2); // full sphere
+      pos[i * 3]     = CENTER_X + R * Math.sin(phi) * Math.cos(theta);
+      pos[i * 3 + 1] = R * Math.cos(phi);
+      pos[i * 3 + 2] = CENTER_Z + R * Math.sin(phi) * Math.sin(theta);
+    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this._starMat = new THREE.PointsMaterial({
+      color: 0xd8e8ff,
+      size: 1.2,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      fog: false,
+      sizeAttenuation: false,
+    });
+    this._stars = new THREE.Points(geom, this._starMat);
+    this.scene.add(this._stars);
+
+    // Shooting star: animated line segment
+    const ssGeom = new THREE.BufferGeometry();
+    ssGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    this._shootingStarMat = new THREE.LineBasicMaterial({
+      color: 0xeef4ff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      fog: false,
+    });
+    this._shootingStarLine = new THREE.Line(ssGeom, this._shootingStarMat);
+    this._shootingStarLine.visible = false;
+    this.scene.add(this._shootingStarLine);
+
+    this._ssActive   = false;
+    this._ssProgress = 0;
+    this._ssDuration = 1.0;
+    this._ssNextAt   = performance.now() / 1000 + 12 + Math.random() * 20;
+    this._ssOrigin   = new THREE.Vector3();
+    this._ssVec      = new THREE.Vector3();
+  }
+
+  _spawnShootingStar() {
+    const R     = 175;
+    const theta = Math.random() * Math.PI * 2;
+    const phi   = 0.2 + Math.random() * 0.55; // roughly 12–50° from zenith
+    this._ssOrigin.set(
+      CENTER_X + R * Math.sin(phi) * Math.cos(theta),
+      R * Math.cos(phi),
+      CENTER_Z + R * Math.sin(phi) * Math.sin(theta),
+    );
+    // Travel direction: move tangentially downward across the sky
+    const dTheta = (Math.random() - 0.5) * 0.7;
+    const dPhi   = 0.18 + Math.random() * 0.22;
+    const ex = R * Math.sin(phi + dPhi) * Math.cos(theta + dTheta);
+    const ey = R * Math.cos(phi + dPhi);
+    const ez = R * Math.sin(phi + dPhi) * Math.sin(theta + dTheta);
+    this._ssVec.set(
+      ex - this._ssOrigin.x + CENTER_X,
+      ey - this._ssOrigin.y,
+      ez - this._ssOrigin.z + CENTER_Z,
+    ).normalize().multiplyScalar(28 + Math.random() * 22);
+
+    this._ssActive      = true;
+    this._ssProgress    = 0;
+    this._ssDuration    = 0.7 + Math.random() * 0.7;
+    this._shootingStarLine.visible = true;
+  }
+
+  _updateShootingStar(_now, _dt, nightness) {
+    if (!this._ssActive) {
+      if (nightness > 0.85 && _now >= this._ssNextAt) this._spawnShootingStar();
+      return;
+    }
+
+    this._ssProgress += _dt / this._ssDuration;
+    if (this._ssProgress >= 1) {
+      this._ssActive = false;
+      this._shootingStarLine.visible = false;
+      this._ssNextAt = _now + 18 + Math.random() * 38;
+      return;
+    }
+
+    const p    = this._ssProgress;
+    const fade = p < 0.15 ? p / 0.15 : p > 0.65 ? (1 - p) / 0.35 : 1;
+    this._shootingStarMat.opacity = fade * 0.95;
+
+    const tailP = Math.max(0, p - 0.18);
+    const arr   = this._shootingStarLine.geometry.attributes.position.array;
+    arr[0] = this._ssOrigin.x + this._ssVec.x * tailP;
+    arr[1] = this._ssOrigin.y + this._ssVec.y * tailP;
+    arr[2] = this._ssOrigin.z + this._ssVec.z * tailP;
+    arr[3] = this._ssOrigin.x + this._ssVec.x * p;
+    arr[4] = this._ssOrigin.y + this._ssVec.y * p;
+    arr[5] = this._ssOrigin.z + this._ssVec.z * p;
+    this._shootingStarLine.geometry.attributes.position.needsUpdate = true;
   }
 
   /** Trigger a rainbow with a given probability (0–1). Call after rain ends. */
@@ -314,6 +420,19 @@ export class WorldRenderer {
     this._hemi.intensity = 0.3 + dayness * 0.4;
     this._hemi.color.copy(nightSky).lerp(new THREE.Color(0x9dcce8), dayness);
     this._hemi.groundColor.copy(new THREE.Color(0x0a0a18)).lerp(new THREE.Color(0x5a7040), dayness);
+
+    // Stars: fade in as night falls, gentle collective twinkle
+    const nightness = 1 - dayness;
+    const starBase  = nightness > 0.3 ? Math.min(1, (nightness - 0.3) / 0.35) : 0;
+    if (starBase > 0) {
+      const twinkle = 0.88 + 0.12 * Math.sin(_now * 1.9) * Math.cos(_now * 2.7 + 0.5);
+      this._starMat.opacity = starBase * twinkle;
+    } else {
+      this._starMat.opacity = 0;
+    }
+
+    // Shooting star
+    this._updateShootingStar(_now, _dt, nightness);
 
     this.renderer.render(this.scene, this.camera);
   }
