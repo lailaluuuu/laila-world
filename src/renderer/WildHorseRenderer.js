@@ -156,7 +156,17 @@ export class WildHorseRenderer {
       forelock.castShadow = true;
       this._geoms.push(forelock.geometry);
 
-      headGroup.add(skull, jaw, muzzle, earL, earR, forelock);
+      // Eyes: on the sides of the skull, slightly forward
+      const eyeGeom = new THREE.SphereGeometry(0.016, 5, 4);
+      const eyeMat  = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.6 });
+      this._geoms.push(eyeGeom);
+      this._mats.push(eyeMat);
+      const eyeL = new THREE.Mesh(eyeGeom, eyeMat);
+      const eyeR = new THREE.Mesh(eyeGeom, eyeMat);
+      eyeL.position.set(-0.066, 0.020, 0.04);
+      eyeR.position.set( 0.066, 0.020, 0.04);
+
+      headGroup.add(skull, jaw, muzzle, earL, earR, forelock, eyeL, eyeR);
 
       // ── Tail ─────────────────────────────────────────────────
       // Two segments: thick root tapering to a flowing end
@@ -305,14 +315,14 @@ export class WildHorseRenderer {
       const surfY = tile ? TerrainRenderer.surfaceY(tile.type) : 0.14;
       const wx = horseSim.x * TILE_SIZE;
       const wz = horseSim.z * TILE_SIZE;
+      const liftY = horseSim.isDragged ? 1.5 : 0;
 
       const fx = horseSim.facingX;
       const fz = horseSim.facingZ;
       const len = Math.hypot(fx, fz) || 1;
-      root.position.set(wx, surfY + 0.02, wz);
-      // lookAt aligns local +Z toward target; our mesh has head on −Z, tail on +Z → without π they walk tail-first
-      root.lookAt(wx + fx / len, surfY + 0.35, wz + fz / len);
-      root.rotateY(Math.PI);
+      root.position.set(wx, surfY + 0.02 + liftY, wz);
+      // Rotate only on Y so the horse stays level — head is on −Z, tail on +Z
+      root.rotation.set(0, Math.atan2(-fx / len, -fz / len), 0);
 
       const phase = horseSim.gallopPhase;
       const gait = horseSim.gait;

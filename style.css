@@ -51,6 +51,32 @@ body {
   30%            { transform: translateY(-5px); opacity: 1; }
 }
 
+/* ── Music notes ─────────────────────────────── */
+
+#music-notes {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.music-note {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 13px;
+  color: #f9a8d4;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  animation: note-float 1.8s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes note-float {
+  0%   { opacity: 0;   transform: translate(-50%, -50%) scale(0.6); }
+  20%  { opacity: 1;   transform: translate(-50%, -80%) scale(1.1); }
+  80%  { opacity: 0.7; transform: translate(-50%, -160%) scale(1.0); }
+  100% { opacity: 0;   transform: translate(-50%, -200%) scale(0.8); }
+}
+
 /* ── HUD overlay ─────────────────────────────── */
 
 #hud {
@@ -387,6 +413,8 @@ body {
   top: 52px;
   right: 16px;
   width: 210px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
   background: rgba(12, 22, 38, 0.92);
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 8px;
@@ -463,6 +491,26 @@ body {
   padding: 2px 7px;
   border-radius: 3px;
   font-size: 11px;
+}
+
+.inventory-slots {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.inventory-slot {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  background: rgba(255,255,255,0.05);
+  cursor: default;
+  user-select: none;
 }
 
 .info-state {

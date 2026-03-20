@@ -7,12 +7,20 @@ const RANK = {
   temple: 45,
   church: 42,
   tree_house: 30,
+  barn: 24,
+  coop: 22,
   housing: 20,
   shelter: 10,
 };
 
+/** Max temple meshes on the map — rare communal landmark, not a replacement for houses. */
+const MAX_TEMPLES  = 2;
 /** Max church meshes on the map (rare landmark, not every hut). */
 const MAX_CHURCHES = 4;
+/** Max barn meshes — working farm buildings scattered across the land. */
+const MAX_BARNS    = 2;
+/** Max coop meshes — small chicken shelters near settled areas. */
+const MAX_COOPS    = 3;
 
 function tileHash(tx, tz) {
   return (tx * 31 + tz * 17) >>> 0;
@@ -61,6 +69,12 @@ export class BuildingRenderer {
       ) {
         rank = RANK.tree_house;
         kind = 'tree_house';
+      } else if (agent.knowledge.has('barn') && agent.knowledge.has('housing')) {
+        rank = RANK.barn;
+        kind = 'barn';
+      } else if (agent.knowledge.has('coop') && agent.knowledge.has('housing')) {
+        rank = RANK.coop;
+        kind = 'coop';
       } else if (agent.knowledge.has('housing')) {
         rank = RANK.housing;
         kind = `house_${h % 4}`;
@@ -72,6 +86,20 @@ export class BuildingRenderer {
       const prev = best.get(key);
       if (!prev || rank > prev.rank) {
         best.set(key, { rank, kind, tileType: tile.type });
+      }
+    }
+
+    // Cap temple visuals: only MAX_TEMPLES tiles keep a temple; rest fall back to house
+    const templeKeys = [...best.entries()]
+      .filter(([, v]) => v.kind === 'temple')
+      .map(([k]) => k)
+      .sort();
+    if (templeKeys.length > MAX_TEMPLES) {
+      for (const key of templeKeys.slice(MAX_TEMPLES)) {
+        const [tx, tz] = key.split(',').map(Number);
+        const h = tileHash(tx, tz);
+        const tileType = best.get(key).tileType;
+        best.set(key, { rank: RANK.housing, kind: `house_${h % 4}`, tileType });
       }
     }
 
@@ -90,6 +118,34 @@ export class BuildingRenderer {
           kind: `house_${h % 4}`,
           tileType,
         });
+      }
+    }
+
+    // Cap barn visuals
+    const barnKeys = [...best.entries()]
+      .filter(([, v]) => v.kind === 'barn')
+      .map(([k]) => k)
+      .sort();
+    if (barnKeys.length > MAX_BARNS) {
+      for (const key of barnKeys.slice(MAX_BARNS)) {
+        const [tx, tz] = key.split(',').map(Number);
+        const h = tileHash(tx, tz);
+        const tileType = best.get(key).tileType;
+        best.set(key, { rank: RANK.housing, kind: `house_${h % 4}`, tileType });
+      }
+    }
+
+    // Cap coop visuals
+    const coopKeys = [...best.entries()]
+      .filter(([, v]) => v.kind === 'coop')
+      .map(([k]) => k)
+      .sort();
+    if (coopKeys.length > MAX_COOPS) {
+      for (const key of coopKeys.slice(MAX_COOPS)) {
+        const [tx, tz] = key.split(',').map(Number);
+        const h = tileHash(tx, tz);
+        const tileType = best.get(key).tileType;
+        best.set(key, { rank: RANK.housing, kind: `house_${h % 4}`, tileType });
       }
     }
 
@@ -116,6 +172,8 @@ export class BuildingRenderer {
     if (kind === 'church') group = this._makeChurch(tx, tz, surfY);
     else if (kind === 'temple') group = this._makeTemple(tx, tz, surfY);
     else if (kind === 'tree_house') group = this._makeTreeHouse(tx, tz, surfY);
+    else if (kind === 'barn') group = this._makeBarn(tx, tz, surfY);
+    else if (kind === 'coop') group = this._makeCoop(tx, tz, surfY);
     else if (kind.startsWith('house_')) group = this._makeHouseVariant(tx, tz, surfY, Number(kind.slice(6)));
     else group = this._makeHutVariant(tx, tz, surfY, Number(kind.slice(4)) || 0);
 
@@ -314,6 +372,85 @@ export class BuildingRenderer {
     );
     crossH.position.set(cx, surfY + 0.55 + 0.5 + 0.12, cz + 0.35);
     group.add(crossV, crossH);
+    return group;
+  }
+
+  _makeBarn(tx, tz, surfY) {
+    const cx = tx * TILE_SIZE + TILE_SIZE / 2;
+    const cz = tz * TILE_SIZE + TILE_SIZE / 2;
+    const group = new THREE.Group();
+    // Foundation slab
+    const foundMat = new THREE.MeshLambertMaterial({ color: 0x8a7860 });
+    const found = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.06, 0.88), foundMat);
+    found.position.set(cx, surfY + 0.03, cz);
+    group.add(found);
+    // Walls — classic barn red
+    const wallMat = new THREE.MeshLambertMaterial({ color: 0x9b2820 });
+    const walls = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.48, 0.68), wallMat);
+    walls.position.set(cx, surfY + 0.06 + 0.24, cz);
+    walls.castShadow = true;
+    group.add(walls);
+    // Hip roof — elongated 4-sided cone
+    const roofMat = new THREE.MeshLambertMaterial({ color: 0x4a1808 });
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(0.58, 0.40, 4), roofMat);
+    roof.position.set(cx, surfY + 0.06 + 0.48 + 0.20, cz);
+    roof.scale.set(1.15, 1, 0.88);
+    roof.castShadow = true;
+    group.add(roof);
+    // Large front doors (two planks)
+    const doorMat = new THREE.MeshLambertMaterial({ color: 0x2a1008 });
+    const doorL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.30, 0.06), doorMat);
+    doorL.position.set(cx - 0.065, surfY + 0.06 + 0.15, cz + 0.34 + 0.01);
+    const doorR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.30, 0.06), doorMat);
+    doorR.position.set(cx + 0.065, surfY + 0.06 + 0.15, cz + 0.34 + 0.01);
+    group.add(doorL, doorR);
+    // Hay bale beside the barn
+    const hayMat = new THREE.MeshLambertMaterial({ color: 0xd4b450 });
+    const hay = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 0.15), hayMat);
+    hay.position.set(cx + 0.54, surfY + 0.06 + 0.08, cz - 0.18);
+    group.add(hay);
+    return group;
+  }
+
+  _makeCoop(tx, tz, surfY) {
+    const cx = tx * TILE_SIZE + TILE_SIZE / 2;
+    const cz = tz * TILE_SIZE + TILE_SIZE / 2;
+    const group = new THREE.Group();
+    // Base
+    const baseMat = new THREE.MeshLambertMaterial({ color: 0x9a8870 });
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.70, 0.05, 0.54), baseMat);
+    base.position.set(cx, surfY + 0.025, cz);
+    group.add(base);
+    // Walls — pale wood
+    const wallMat = new THREE.MeshLambertMaterial({ color: 0xc8a870 });
+    const walls = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.28, 0.38), wallMat);
+    walls.position.set(cx, surfY + 0.05 + 0.14, cz);
+    walls.castShadow = true;
+    group.add(walls);
+    // Shed roof — slightly slanted flat panel
+    const roofMat = new THREE.MeshLambertMaterial({ color: 0x6a4028 });
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.06, 0.48), roofMat);
+    roof.position.set(cx, surfY + 0.05 + 0.28 + 0.04, cz);
+    roof.rotation.x = 0.12;
+    roof.castShadow = true;
+    group.add(roof);
+    // Small chicken door
+    const doorMat = new THREE.MeshLambertMaterial({ color: 0x3a2010 });
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.12, 0.06), doorMat);
+    door.position.set(cx, surfY + 0.05 + 0.06, cz + 0.19 + 0.02);
+    group.add(door);
+    // Small fenced run — four thin posts and a rail
+    const postMat = new THREE.MeshLambertMaterial({ color: 0x8a6840 });
+    const postGeom = new THREE.CylinderGeometry(0.014, 0.012, 0.22, 4);
+    const railGeom = new THREE.BoxGeometry(0.38, 0.02, 0.02);
+    for (const [px2, pz2] of [[-0.18, 0.32], [0.18, 0.32], [-0.18, 0.52], [0.18, 0.52]]) {
+      const post = new THREE.Mesh(postGeom, postMat);
+      post.position.set(cx + px2, surfY + 0.05 + 0.11, cz + pz2);
+      group.add(post);
+    }
+    const rail = new THREE.Mesh(railGeom, postMat);
+    rail.position.set(cx, surfY + 0.05 + 0.20, cz + 0.42);
+    group.add(rail);
     return group;
   }
 

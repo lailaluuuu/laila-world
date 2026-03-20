@@ -48,20 +48,20 @@ export class ButterflyRenderer {
     // ── Forewing shape: upper, larger, more pointed at tip ──────────────────
     const foreShape = new THREE.Shape();
     foreShape.moveTo(0, 0);
-    foreShape.quadraticCurveTo(0.13, 0.23, 0.34, 0.17);
-    foreShape.quadraticCurveTo(0.42, 0.03, 0.37, -0.05);
-    foreShape.quadraticCurveTo(0.19, -0.09, 0.06, -0.04);
+    foreShape.quadraticCurveTo(0.055, 0.096, 0.143, 0.071);
+    foreShape.quadraticCurveTo(0.176, 0.013, 0.155, -0.021);
+    foreShape.quadraticCurveTo(0.080, -0.038, 0.025, -0.017);
     foreShape.lineTo(0, 0);
     const foreGeom = new THREE.ShapeGeometry(foreShape);
     this._geoms.push(foreGeom);
 
     // ── Hindwing shape: lower, smaller, rounder ──────────────────────────────
     const hindShape = new THREE.Shape();
-    hindShape.moveTo(0, -0.03);
-    hindShape.quadraticCurveTo(0.10, 0.07, 0.25, 0.05);
-    hindShape.quadraticCurveTo(0.31, -0.03, 0.23, -0.17);
-    hindShape.quadraticCurveTo(0.10, -0.21, 0.03, -0.12);
-    hindShape.lineTo(0, -0.03);
+    hindShape.moveTo(0, -0.013);
+    hindShape.quadraticCurveTo(0.042, 0.029, 0.105, 0.021);
+    hindShape.quadraticCurveTo(0.130, -0.013, 0.097, -0.071);
+    hindShape.quadraticCurveTo(0.042, -0.088, 0.013, -0.050);
+    hindShape.lineTo(0, -0.013);
     const hindGeom = new THREE.ShapeGeometry(hindShape);
     this._geoms.push(hindGeom);
 
@@ -94,7 +94,7 @@ export class ButterflyRenderer {
       const hindMatR = hindMatL.clone();
       this._mats.push(hindMatL, hindMatR);
 
-      const bodyGeom = new THREE.CylinderGeometry(0.018, 0.022, 0.14, 6);
+      const bodyGeom = new THREE.CylinderGeometry(0.008, 0.010, 0.058, 6);
       this._geoms.push(bodyGeom);
       const bodyMat = new THREE.MeshBasicMaterial({ color: BODY_COLOR });
       this._mats.push(bodyMat);
@@ -120,11 +120,11 @@ export class ButterflyRenderer {
 
       // Hindwings render first (behind forewings) and attach slightly rearward
       const hindWings = makeWingPair(hindGeom, hindMatL, hindMatR);
-      hindWings.position.x = -0.025;
+      hindWings.position.x = -0.010;
 
       // Forewings attach slightly forward
       const foreWings = makeWingPair(foreGeom, foreMatL, foreMatR);
-      foreWings.position.x = 0.02;
+      foreWings.position.x = 0.008;
 
       root.add(hindWings);
       root.add(foreWings);

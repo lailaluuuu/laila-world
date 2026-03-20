@@ -16,11 +16,13 @@ export const AgentState = {
   SOCIALIZING: 'socializing',
   DISCOVERING: 'discovering',
   FISHING:     'fishing',
+  PERFORMING:  'performing',
 };
 
 export class Agent {
   constructor(x, z) {
     this.id = nextId++;
+    this.gender = Math.random() < 0.5 ? 'female' : 'male';
     this.name = randomName();
 
     // Position in tile-space (fractional)
@@ -50,6 +52,7 @@ export class Agent {
     this.isAdult = false; // flips true once age >= maturity threshold
 
     this.selected = false;
+    this.isDragged = false;
     this.facingX = 0;
     this.facingZ = 1;
 
@@ -60,6 +63,9 @@ export class Agent {
     /** Task role (gatherer, teacher, scout, carer) — set when Organisation is discovered */
     this.task = null;
 
+    /** Carried items — max 4 slots, strings like 'herbs','mushrooms','berries','meat','flint','wood' */
+    this.inventory = [];
+
 
     /** How often the agent re-evaluates its needs even mid-wander (game-sec) */
     this._needsCheckTimer = 2 + Math.random() * 3;
@@ -68,10 +74,16 @@ export class Agent {
     /** Cooldown before this agent can light another campfire (game-sec) */
     this._fireCooldown = 20 + Math.random() * 20;
 
+    /** Throttle concept discovery checks — only run every 0.5 game-sec */
+    this._discoverTimer = Math.random() * 0.5;
+
     /** Speech bubble: text to show above agent, or null */
     this.speechBubble = null;
     /** How many game-seconds the bubble stays visible */
     this.speechBubbleTimer = 0;
+
+    /** How many game-seconds remain in the current performance session */
+    this.performTimer = 0;
 
     /** Fishing session countdown (game-sec); active while state === FISHING */
     this.fishingTimer = 0;
@@ -101,6 +113,9 @@ export class Agent {
 
   tick(delta, world, allAgents, conceptGraph, weatherMult = 1.0) {
     this.age += delta;
+
+    // ── Being dragged by the player ──────────────────────────────────────
+    if (this.isDragged) return;
 
     // ── Horse riding: sync position to mount ──────────────────────────────
     if (this.mountedHorse) {
@@ -173,7 +188,7 @@ export class Agent {
     // Fire-lighting: cold agent who knows fire will light a campfire on their tile
     if (hasFire && envMult >= 1.2 && this._fireCooldown <= 0) {
       const tile = world.getTile(Math.floor(this.x), Math.floor(this.z));
-      if (tile && (tile.type === TileType.FOREST || tile.type === TileType.GRASS)) {
+      if (tile && (tile.type === TileType.FOREST || tile.type === TileType.WOODLAND || tile.type === TileType.GRASS)) {
         this._fireCooldown = 45 + Math.random() * 30;
         // Emit a campfire event to be consumed by main.js
         if (!world.campfireEvents) world.campfireEvents = [];
@@ -215,6 +230,18 @@ export class Agent {
         this.state = AgentState.WANDERING;
         this._pickWanderTarget(world, allAgents);
       }
+      this._trySocialise(delta, allAgents, conceptGraph);
+      return;
+    }
+
+    // ── Performing: play music in place until the session ends ───────────
+    if (this.state === AgentState.PERFORMING) {
+      this.performTimer -= delta;
+      if (this.performTimer <= 0) {
+        this.state = AgentState.WANDERING;
+        this._pickWanderTarget(world, allAgents);
+      }
+      // Spread knowledge faster to nearby listeners
       this._trySocialise(delta, allAgents, conceptGraph);
       return;
     }
@@ -284,13 +311,13 @@ export class Agent {
     // Eating: arriving at food tile satisfies hunger
     if (this.state === AgentState.GATHERING) {
       const tile = world.getTile(Math.floor(this.x), Math.floor(this.z));
-      if (tile && (tile.type === TileType.GRASS || tile.type === TileType.FOREST)) {
+      if (tile && (tile.type === TileType.GRASS || tile.type === TileType.WOODLAND || tile.type === TileType.FOREST)) {
         let toolMult  = this.knowledge.has('stone_tools') ? 1.20 : 1.0;
         if (this.knowledge.has('metal_tools')) toolMult *= 1.25;
         if (this.knowledge.has('fishing')) toolMult *= 1.1;
         if (this.knowledge.has('animal_domestication')) toolMult *= 1.25;
         if (this.knowledge.has('herding')) toolMult *= 1.15;
-        if (this.knowledge.has('hunting') && tile.type === TileType.FOREST) toolMult *= 1.35;
+        if (this.knowledge.has('hunting') && (tile.type === TileType.FOREST || tile.type === TileType.WOODLAND)) toolMult *= 1.35;
         if (this.knowledge.has('agriculture') && tile.type === TileType.GRASS) toolMult *= 1.35;
         let cookMult  = this.knowledge.has('cooking') ? 1.60 : 1.0;
         if (this.knowledge.has('pottery')) cookMult *= 1.15;
@@ -315,12 +342,121 @@ export class Agent {
         tile.mushrooms = Math.max(0, tile.mushrooms - 0.12);
       }
 
+      // Honey: agents who know honey_gathering eat from nearby bee hives
+      if (this.knowledge.has('honey_gathering') && world.beeHives) {
+        const nearHive = world.beeHives.some(h => Math.hypot(h.x - this.x, h.z - this.z) < 4);
+        if (nearHive) {
+          this.needs.hunger = Math.min(1, this.needs.hunger + 0.22);
+        }
+      }
+
       // Flint: one-time gather that boosts stone_tools discovery
-      if (tile && tile.flint === 1 && !this.knowledge.has('stone_tools')) {
+      if (tile && tile.flint === 1 && !this.knowledge.has('stone_tools') && this.inventory.length < 4) {
         tile.flint = 0;
-        this._hasFlint = true;
+        this.inventory.push('flint');
+      }
+
+      // Pick up herbs to carry when already healthy and there's room
+      if (tile && tile.herbs > 0.2 && this.knowledge.has('medicine') &&
+          this.needs.vitality > 0.7 && this.inventory.length < 4) {
+        this.inventory.push('herbs');
+        tile.herbs = Math.max(0, tile.herbs - 0.15);
+      }
+
+      // Pick up mushrooms to carry when already fed
+      if (tile && tile.mushrooms > 0.2 && this.needs.hunger > 0.65 && this.inventory.length < 4) {
+        this.inventory.push('mushrooms');
+        tile.mushrooms = Math.max(0, tile.mushrooms - 0.12);
+      }
+
+      // Woodcutting: fell a tree on FOREST tiles to yield a wood log
+      if (tile && tile.type === TileType.FOREST &&
+          this.knowledge.has('woodcutting') &&
+          !tile.treeCut &&
+          this.inventory.filter(i => i === 'wood').length < 2 &&
+          this.inventory.length < 4 &&
+          Math.random() < 0.55) {
+        if (world.cutTree(tile.x, tile.z)) {
+          this.inventory.push('wood');
+          if (!world.woodcutEvents) world.woodcutEvents = [];
+          world.woodcutEvents.push({ tx: tile.x, tz: tile.z, agentName: this.name });
+        }
+      }
+      // Scavenge fallen branches from WOODLAND (no tree removed visually)
+      if (tile && tile.type === TileType.WOODLAND &&
+          this.knowledge.has('woodcutting') &&
+          !this.inventory.includes('wood') &&
+          this.inventory.length < 4 &&
+          Math.random() < 0.35) {
+        this.inventory.push('wood');
       }
     }
+
+    // ── Opportunistic foraging: pick up food to carry regardless of state ──
+    // Agents stock up whenever they have inventory room and aren't stuffed.
+    // Wandering agents have a lower chance so they don't fill up on junk mid-trip.
+    const isGathering = this.state === AgentState.GATHERING;
+    const forageTile = world.getTile(Math.floor(this.x), Math.floor(this.z));
+    const foodInInv   = this.inventory.filter(i =>
+      i === 'berries' || i === 'mushrooms' || i === 'meat' || i === 'eggs' || i === 'milk').length;
+
+    if (forageTile && this.inventory.length < 4 && foodInInv < 3 && this.needs.hunger < 0.90) {
+      const roll = Math.random();
+      const chance = isGathering ? 1.0 : 0.40; // always grab during gathering, 40% while wandering
+
+      // Berries from GRASS
+      if (forageTile.type === TileType.GRASS && forageTile.resource > 0.3 &&
+          this.inventory.filter(i => i === 'berries').length < 2 && roll < chance) {
+        this.inventory.push('berries');
+        forageTile.resource = Math.max(0, forageTile.resource - 0.10);
+      }
+
+      // Mushrooms from FOREST/WOODLAND
+      if (forageTile.mushrooms > 0.2 &&
+          this.inventory.filter(i => i === 'mushrooms').length < 2 && roll < chance) {
+        this.inventory.push('mushrooms');
+        forageTile.mushrooms = Math.max(0, forageTile.mushrooms - 0.12);
+      }
+
+      // Meat — hunters carry it back
+      if ((forageTile.type === TileType.FOREST || forageTile.type === TileType.WOODLAND) &&
+          this.knowledge.has('hunting') && this.needs.hunger > 0.55 &&
+          this.inventory.filter(i => i === 'meat').length < 2 && roll < chance * 0.35) {
+        this.inventory.push('meat');
+      }
+    }
+
+    // Milk: collect from nearby cows whenever passing — any state, requires dairy
+    if (this.knowledge.has('dairy') && world.cows?.length > 0 &&
+        this.inventory.length < 4 && this.inventory.filter(i => i === 'milk').length < 2) {
+      for (const cow of world.cows) {
+        if (cow.milk < 0.5) continue;
+        if (Math.hypot(cow.x - this.x, cow.z - this.z) <= 1.5) {
+          cow.milk = Math.max(0, cow.milk - 0.5);
+          cow.milkTimer = 30 + Math.random() * 30;
+          this.inventory.push('milk');
+          break;
+        }
+      }
+    }
+
+    // Eggs: collect from nearby nests whenever passing — any state
+    if (this.knowledge.has('animal_domestication') && world.chickenNests &&
+        this.inventory.length < 4 && this.inventory.filter(i => i === 'eggs').length < 2) {
+      const cx = Math.floor(this.x);
+      const cz = Math.floor(this.z);
+      for (const [key, nest] of world.chickenNests) {
+        if (nest.eggs <= 0) continue;
+        const [nx, nz] = key.split(',').map(Number);
+        if (Math.hypot(nx - cx, nz - cz) <= 1.5) {
+          const take = this.knowledge.has('coop') ? Math.min(nest.eggs, 2) : 1;
+          nest.eggs -= take;
+          for (let e = 0; e < take; e++) this.inventory.push('eggs');
+          break;
+        }
+      }
+    }
+
     // After wandering to a spot, graze for a while before picking next target
     if (this.state === AgentState.WANDERING && Math.random() < 0.88) {
       this.grazeTimer = 4 + Math.random() * 8;
@@ -335,8 +471,12 @@ export class Agent {
     const restThreshold   = taskDef?.restThreshold   ?? 0.2;
     const envMult = this._lastWeatherMult ?? 1.0;
 
-    // Critical hunger — immediately seek food (clears any grazing)
+    // Critical hunger — eat from inventory first, otherwise seek food
     if (this.needs.hunger < gatherThreshold) {
+      if (this.inventory.some(i => i === 'berries' || i === 'mushrooms' || i === 'meat' || i === 'eggs' || i === 'milk')) {
+        this._useInventory(world); // consumes one food item immediately
+        return;
+      }
       this.grazeTimer = 0;
       this.state = AgentState.GATHERING;
       this._pickGatherTarget(world);
@@ -355,7 +495,7 @@ export class Agent {
     if (envMult >= 1.3 && !this.knowledge.has('fire') && !this.knowledge.has('shelter')) {
       const cx = Math.floor(this.x);
       const cz = Math.floor(this.z);
-      const warmTile = world.findNearest(cx, cz, [TileType.FOREST], 10);
+      const warmTile = world.findNearest(cx, cz, [TileType.FOREST, TileType.WOODLAND], 10);
       if (warmTile) {
         this.state = AgentState.WANDERING;
         this.targetX = warmTile.x + 0.5;
@@ -364,8 +504,12 @@ export class Agent {
       }
     }
 
-    // Low vitality: medicine-knowers seek herb tiles to restore it
+    // Low vitality: use carried herbs first, otherwise seek a herb tile
     if (this.knowledge.has('medicine') && this.needs.vitality < 0.4) {
+      if (this.inventory.includes('herbs')) {
+        this._useInventory(world);
+        return;
+      }
       const target = this._pickHerbTarget(world);
       if (target) {
         this.state = AgentState.GATHERING;
@@ -386,15 +530,55 @@ export class Agent {
     this._pickWanderTarget(world, allAgents);
   }
 
+  // ── Inventory use ─────────────────────────────────────────────────────
+
+  _useInventory(world) {
+    // Eat carried food when hungry
+    if (this.needs.hunger < 0.45) {
+      for (const food of ['meat', 'milk', 'eggs', 'berries', 'mushrooms']) {
+        const idx = this.inventory.indexOf(food);
+        if (idx !== -1) {
+          this.inventory.splice(idx, 1);
+          const base = food === 'meat' ? 0.45 : food === 'milk' ? 0.40 : food === 'eggs' ? 0.35 : food === 'berries' ? 0.30 : 0.20;
+          const cook = ((food === 'meat' || food === 'eggs') && this.knowledge.has('cooking')) ? 1.4 : 1.0;
+          this.needs.hunger = Math.min(1, this.needs.hunger + base * cook);
+          break;
+        }
+      }
+    }
+
+    // Use carried herbs to restore vitality
+    if (this.needs.vitality < 0.5 && this.knowledge.has('medicine')) {
+      const idx = this.inventory.indexOf('herbs');
+      if (idx !== -1) {
+        this.inventory.splice(idx, 1);
+        const heal = this.knowledge.has('herbalism') ? 1.5 : 1.0;
+        this.needs.vitality = Math.min(1, this.needs.vitality + 0.25 * heal);
+      }
+    }
+
+    // Use carried wood to light a campfire on the current tile
+    if (this.knowledge.has('fire') && this._fireCooldown <= 0 &&
+        this._lastWeatherMult >= 1.2) {
+      const idx = this.inventory.indexOf('wood');
+      if (idx !== -1) {
+        this.inventory.splice(idx, 1);
+        this._fireCooldown = 45 + Math.random() * 30;
+        if (!world.campfireEvents) world.campfireEvents = [];
+        world.campfireEvents.push({ tx: Math.floor(this.x), tz: Math.floor(this.z), agentName: this.name });
+      }
+    }
+  }
+
   // ── Target selection ──────────────────────────────────────────────────
 
   _pickWanderTarget(world, allAgents = []) {
     const taskDef = this.task ? Agent.TASKS[this.task] : null;
     const radiusBonus = taskDef?.wanderRadiusBonus ?? 0;
-    let radius = 2 + Math.floor(this.curiosity * 2) + radiusBonus;
+    let radius = 4 + Math.floor(this.curiosity * 5) + radiusBonus;
 
     // Flock: all agents have a chance to drift toward a nearby peer
-    if (allAgents.length > 1 && Math.random() < 0.30) {
+    if (allAgents.length > 1 && Math.random() < 0.12) {
       const others = allAgents.filter(a => a !== this && a.health > 0);
       if (others.length > 0) {
         // Pick a random nearby agent to drift toward
@@ -458,6 +642,24 @@ export class Agent {
   _pickGatherTarget(world) {
     const cx = Math.floor(this.x);
     const cz = Math.floor(this.z);
+    // Seek a cow to milk when hungry and knows dairy
+    if (this.knowledge.has('dairy') && Math.random() < 0.35) {
+      const cowTarget = this._pickCowTarget(world);
+      if (cowTarget) {
+        this.targetX = cowTarget.x;
+        this.targetZ = cowTarget.z;
+        return;
+      }
+    }
+    // Seek egg nests when hungry and knows animal_domestication
+    if (this.knowledge.has('animal_domestication') && Math.random() < 0.30) {
+      const eggTarget = this._pickEggTarget(world);
+      if (eggTarget) {
+        this.targetX = eggTarget.x + 0.5;
+        this.targetZ = eggTarget.z + 0.5;
+        return;
+      }
+    }
     if (this.knowledge.has('fishing') && Math.random() < 0.45) {
       const fishTile = this._pickFishingTarget(world);
       if (fishTile) {
@@ -468,7 +670,7 @@ export class Agent {
       }
     }
     this._fishingTrip = false;
-    const tile = world.findNearest(cx, cz, [TileType.GRASS, TileType.FOREST], 8);
+    const tile = world.findNearest(cx, cz, [TileType.GRASS, TileType.WOODLAND, TileType.FOREST], 14);
     if (tile) {
       this.targetX = tile.x + 0.5;
       this.targetZ = tile.z + 0.5;
@@ -496,6 +698,35 @@ export class Agent {
           if (dist < bestDist) { bestDist = dist; best = tile; }
         }
       }
+    }
+    return best;
+  }
+
+  /** Find the nearest cow with milk available within radius 15. Returns {x,z} or null. */
+  _pickCowTarget(world) {
+    if (!world.cows?.length) return null;
+    let best = null;
+    let bestDist = Infinity;
+    for (const cow of world.cows) {
+      if (cow.milk < 0.5) continue;
+      const dist = Math.hypot(cow.x - this.x, cow.z - this.z);
+      if (dist < 15 && dist < bestDist) { bestDist = dist; best = cow; }
+    }
+    return best;
+  }
+
+  /** Find the nearest chicken nest with available eggs within radius 12. Returns {x,z} or null. */
+  _pickEggTarget(world) {
+    if (!world.chickenNests) return null;
+    const cx = Math.floor(this.x);
+    const cz = Math.floor(this.z);
+    let best = null;
+    let bestDist = Infinity;
+    for (const [key, nest] of world.chickenNests) {
+      if (nest.eggs <= 0) continue;
+      const [nx, nz] = key.split(',').map(Number);
+      const dist = Math.hypot(nx - cx, nz - cz);
+      if (dist < 12 && dist < bestDist) { bestDist = dist; best = { x: nx, z: nz }; }
     }
     return best;
   }
@@ -533,10 +764,29 @@ export class Agent {
   // ── Concept discovery ─────────────────────────────────────────────────
 
   _tryDiscover(delta, world, conceptGraph, allAgents = []) {
+    this._discoverTimer -= delta;
+    if (this._discoverTimer > 0) return;
+    this._discoverTimer = 0.5;
+
     const tile = world.getTile(Math.floor(this.x), Math.floor(this.z));
     if (!tile) return;
 
-    const discovered = conceptGraph.checkDiscovery(this, tile, delta, world, allAgents);
+    // Hint: agents on grass who know shelter but not animal_domestication
+    // occasionally wonder about the animals living nearby
+    if (
+      tile.type === TileType.GRASS &&
+      this.knowledge.has('shelter') &&
+      !this.knowledge.has('animal_domestication') &&
+      !this.speechBubble &&
+      Math.random() < 0.04
+    ) {
+      const hints = ['🐑?', '🐖?', '🐄?', '🐓?'];
+      this.speechBubble = hints[Math.floor(Math.random() * hints.length)];
+      this.speechBubbleTimer = 2.5;
+    }
+
+    // Pass the throttle interval as effective delta so probability math stays correct
+    const discovered = conceptGraph.checkDiscovery(this, tile, 0.5, world, allAgents);
     if (discovered) {
       this.state = AgentState.DISCOVERING;
       this.discoveryFlash = 1.5;
@@ -557,7 +807,9 @@ export class Agent {
       if (other === this || other.health <= 0) continue;
       const dist = Math.hypot(this.x - other.x, this.z - other.z);
       if (dist < 5.0) {
-        conceptGraph.trySpread(this, other, SOCIAL_COOLDOWN);
+        // Performers spread knowledge faster to nearby listeners
+        const spreadMult = (this.state === AgentState.PERFORMING || other.state === AgentState.PERFORMING) ? 2.5 : 1;
+        conceptGraph.trySpread(this, other, SOCIAL_COOLDOWN / spreadMult);
         // Show a speech bubble only if this agent knows language
         if (this.knowledge.has('language') && !this.speechBubble && Math.random() < 0.4) {
           this.speechBubble = '💬';
@@ -565,6 +817,27 @@ export class Agent {
         }
         if (dist < 3.5) this._tryReproduce(other, conceptGraph);
       }
+    }
+    this._tryPerform(allAgents);
+  }
+
+  // ── Music performance ─────────────────────────────────────────────────
+
+  _tryPerform(allAgents) {
+    if (!this.knowledge.has('music')) return;
+    if (this.state === AgentState.PERFORMING) return;
+    if (this.needs.hunger < 0.35 || this.needs.energy < 0.25) return;
+
+    const nearby = allAgents.filter(
+      a => a !== this && a.health > 0 && Math.hypot(a.x - this.x, a.z - this.z) < 5,
+    );
+    if (nearby.length < 1) return;
+
+    // ~1 performance per ~80 game-seconds when near others
+    if (Math.random() < 0.013) {
+      this.state = AgentState.PERFORMING;
+      this.performTimer = 8 + Math.random() * 10;
+      this.grazeTimer = 0;
     }
   }
 

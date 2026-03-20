@@ -10,6 +10,9 @@ import { WildHorse }         from './simulation/WildHorse.js';
 import { WildHorseRenderer } from './renderer/WildHorseRenderer.js';
 import { ButterflyRenderer } from './renderer/ButterflyRenderer.js';
 import { BeeRenderer }       from './renderer/BeeRenderer.js';
+import { SheepRenderer }        from './renderer/SheepRenderer.js';
+import { HighlandCowRenderer }  from './renderer/HighlandCowRenderer.js';
+import { FlowerRenderer }       from './renderer/FlowerRenderer.js';
 import { TimeSystem }        from './systems/TimeSystem.js';
 import { WeatherSystem }     from './systems/WeatherSystem.js';
 
@@ -64,6 +67,9 @@ async function init() {
   let horseRenderer;
   let butterflyRenderer;
   let beeRenderer;
+  let sheepRenderer;
+  let highlandCowRenderer;
+  let flowerRenderer;
   try {
   world = new World();
   world.naturalFires = new Map();
@@ -79,6 +85,9 @@ async function init() {
   horseRenderer = new WildHorseRenderer(wr.scene, horses, world);
   butterflyRenderer = new ButterflyRenderer(wr.scene, world);
   beeRenderer = new BeeRenderer(wr.scene, world);
+  sheepRenderer = new SheepRenderer(wr.scene, world);
+  highlandCowRenderer = new HighlandCowRenderer(wr.scene, world);
+  flowerRenderer = new FlowerRenderer(wr.scene, world);
   buildingRenderer = new BuildingRenderer(wr.scene, world);
 
   time = new TimeSystem();
@@ -171,6 +180,9 @@ async function init() {
     horseRenderer.dispose();
     butterflyRenderer.dispose();
     beeRenderer.dispose();
+    sheepRenderer.dispose();
+    highlandCowRenderer.dispose();
+    flowerRenderer.dispose();
     buildingRenderer.dispose();
 
     world = new World();
@@ -188,6 +200,9 @@ async function init() {
     horseRenderer = new WildHorseRenderer(wr.scene, horses, world);
     butterflyRenderer = new ButterflyRenderer(wr.scene, world);
     beeRenderer = new BeeRenderer(wr.scene, world);
+    sheepRenderer = new SheepRenderer(wr.scene, world);
+    highlandCowRenderer = new HighlandCowRenderer(wr.scene, world);
+    flowerRenderer = new FlowerRenderer(wr.scene, world);
     buildingRenderer = new BuildingRenderer(wr.scene, world);
 
     time.gameTime = (8 / 24) * 120; // reset to 08:00
@@ -240,12 +255,73 @@ async function init() {
   const groundPoint = new THREE.Vector3();
   const PICK_RADIUS = TILE_SIZE * 1.5; // 3 world-units ≈ 1.5 tiles
   let mouseDownAt   = null;
+  let draggedEntity = null; // agent or horse being held by the player
 
   canvas.addEventListener('mousedown', e => {
     mouseDownAt = { x: e.clientX, y: e.clientY };
+
+    // Check if the player is clicking near an agent or horse to pick up
+    const ndc = wr.getNDC(e);
+    raycaster.setFromCamera(ndc, wr.camera);
+    if (raycaster.ray.intersectPlane(groundPlane, groundPoint)) {
+      let hit = null;
+      let bestDist = PICK_RADIUS;
+      for (const agent of agents) {
+        if (agent.health <= 0) continue;
+        const dist = Math.hypot(groundPoint.x - agent.x * TILE_SIZE, groundPoint.z - agent.z * TILE_SIZE);
+        if (dist < bestDist) { bestDist = dist; hit = agent; }
+      }
+      for (const horse of horses) {
+        const dist = Math.hypot(groundPoint.x - horse.x * TILE_SIZE, groundPoint.z - horse.z * TILE_SIZE);
+        if (dist < bestDist) { bestDist = dist; hit = horse; }
+      }
+      if (hit) {
+        draggedEntity = hit;
+        hit.isDragged = true;
+        wr.controls.enabled = false;
+      }
+    }
+  });
+
+  canvas.addEventListener('mousemove', e => {
+    if (!draggedEntity) return;
+    const ndc = wr.getNDC(e);
+    raycaster.setFromCamera(ndc, wr.camera);
+    if (raycaster.ray.intersectPlane(groundPlane, groundPoint)) {
+      draggedEntity.x = groundPoint.x / TILE_SIZE;
+      draggedEntity.z = groundPoint.z / TILE_SIZE;
+      draggedEntity.targetX = draggedEntity.x;
+      draggedEntity.targetZ = draggedEntity.z;
+    }
   });
 
   canvas.addEventListener('mouseup', e => {
+    // Release any dragged entity
+    if (draggedEntity) {
+      const ddx = mouseDownAt ? e.clientX - mouseDownAt.x : 999;
+      const ddy = mouseDownAt ? e.clientY - mouseDownAt.y : 999;
+      const wasDrag = Math.hypot(ddx, ddy) > 5;
+
+      draggedEntity.isDragged = false;
+      draggedEntity.targetX = draggedEntity.x;
+      draggedEntity.targetZ = draggedEntity.z;
+      const released = draggedEntity;
+      draggedEntity = null;
+      wr.controls.enabled = true;
+      mouseDownAt = null;
+
+      // If the mouse barely moved it was a click, not a drag — select the agent
+      if (!wasDrag && released instanceof Agent) {
+        if (selectedAgent) selectedAgent.selected = false;
+        selectedAgent = released;
+        selectedTile = null;
+        released.selected = true;
+        updateInfoPanel(released);
+        document.getElementById('info-panel').classList.remove('hidden');
+      }
+      return;
+    }
+
     if (!mouseDownAt) return;
     const dx = e.clientX - mouseDownAt.x;
     const dy = e.clientY - mouseDownAt.y;
@@ -321,6 +397,10 @@ async function init() {
     const maxPop = Number(maxPopSlider?.value ?? 100);
     const carryingCapacity = Math.min(maxPop, Math.floor(world.getCarryingCapacity() * (hasAgriculture ? 1.25 : 1)));
     document.getElementById('population').textContent = `${alive} / ${carryingCapacity}`;
+    const femaleCount = aliveAgents.filter(a => a.gender === 'female').length;
+    const maleCount = alive - femaleCount;
+    document.getElementById('pop-female').textContent = `♀ ${femaleCount}`;
+    document.getElementById('pop-male').textContent = `♂ ${maleCount}`;
 
     // Replenishment rate: average births per game day (rolling 5-day window)
     const REPLENISH_WINDOW_DAYS = 5;
@@ -397,6 +477,7 @@ async function init() {
     [TileType.DEEP_WATER]: { icon: '🌊', name: 'Deep Water' },
     [TileType.WATER]:    { icon: '🌊', name: 'Water' },
     [TileType.GRASS]:    { icon: '🌿', name: 'Grassland' },
+    [TileType.WOODLAND]: { icon: '🌳', name: 'Woodland' },
     [TileType.FOREST]:   { icon: '🌲', name: 'Forest' },
     [TileType.STONE]:    { icon: '🪨', name: 'Stone' },
     [TileType.MOUNTAIN]: { icon: '⛰️', name: 'Mountain' },
@@ -406,6 +487,7 @@ async function init() {
     [TileType.DEEP_WATER]: 'Open ocean. Deep fish patrol these waters. Requires Sailing to cross.',
     [TileType.WATER]:    'Coastal water. Shallow fish swim here. Requires Sailing to cross.',
     [TileType.GRASS]:    'Berries, sheep, and pigs. Good for gathering food.',
+    [TileType.WOODLAND]: 'Open woodland with scattered trees and herbs. Good for gathering and hunting.',
     [TileType.FOREST]:   'Trees, wild game, mushrooms, and healing herbs. Rich in food and natural resources.',
     [TileType.STONE]:    'Rocks and flint shards. Good for stone tools and pottery.',
     [TileType.MOUNTAIN]: 'Peaks and snow. Requires Mountain Climbing to traverse.',
@@ -416,7 +498,7 @@ async function init() {
     const info = TILE_LABELS[tile.type] ?? { icon: '', name: tile?.type ?? '?' };
     const features = TILE_FEATURES[tile.type] ?? '';
     let resourceHtml = '';
-    if (tile.type === TileType.GRASS || tile.type === TileType.FOREST) {
+    if (tile.type === TileType.GRASS || tile.type === TileType.WOODLAND || tile.type === TileType.FOREST) {
       const pct = Math.round(tile.resource * 100);
       resourceHtml = `
         <div class="info-row" style="margin-top:10px">
@@ -455,6 +537,17 @@ async function init() {
     `;
   }
 
+  const ITEM_DISPLAY = {
+    herbs:     { icon: '🌿', label: 'Herbs',     color: '#86efac' },
+    mushrooms: { icon: '🍄', label: 'Mushrooms', color: '#c8860a' },
+    berries:   { icon: '🫐', label: 'Berries',   color: '#818cf8' },
+    meat:      { icon: '🍖', label: 'Meat',      color: '#f87171' },
+    eggs:      { icon: '🥚', label: 'Eggs',      color: '#f5f0e0' },
+    milk:      { icon: '🥛', label: 'Milk',      color: '#f0f0f8' },
+    flint:     { icon: '🪨', label: 'Flint',     color: '#94a3b8' },
+    wood:      { icon: '🪵', label: 'Wood',      color: '#a16207' },
+  };
+
   function updateInfoPanel(agent) {
     if (!agent) return;
     const hunger   = agent.needs?.hunger   ?? 0;
@@ -468,6 +561,19 @@ async function init() {
       return c ? `<span class="info-tag">${c.icon ?? ''} ${c.name}</span>` : '';
     }).join('');
     const hasMedicine = agent.knowledge.has('medicine');
+
+    const inv = agent.inventory ?? [];
+    const inventoryHtml = inv.length > 0
+      ? `<div style="margin-top:10px">
+          <div class="info-label" style="margin-bottom:5px">Carrying</div>
+          <div class="inventory-slots">
+            ${inv.map(item => {
+              const d = ITEM_DISPLAY[item] ?? { icon: '?', label: item, color: '#e0e0e0' };
+              return `<span class="inventory-slot" title="${d.label}" style="border-color:${d.color}55;color:${d.color}">${d.icon}</span>`;
+            }).join('')}
+          </div>
+        </div>`
+      : '';
 
     document.getElementById('info-content').innerHTML = `
       <div class="info-name">${agent.name}</div>
@@ -496,6 +602,7 @@ async function init() {
         </div>
         ${agent.task ? `<div class="info-row"><span class="info-label">Task</span><span class="info-tag">${Agent.TASKS[agent.task]?.icon ?? '•'} ${Agent.TASKS[agent.task]?.name ?? agent.task}</span></div>` : ''}
       </div>
+      ${inventoryHtml}
       ${concepts ? `<div class="info-tags">${concepts}</div>` : '<div style="opacity:.3;font-size:12px;margin-top:10px">No discoveries yet</div>'}
     `;
   }
@@ -569,6 +676,12 @@ async function init() {
 
       // Regenerate tile food resources (season-aware)
       world.updateResources(delta, time.season);
+      // Tick tree regrowth countdowns
+      world.updateCutTrees(delta);
+      // Tick chicken egg-laying
+      world.updateChickenNests(delta);
+      // Tick cow milk refill
+      world.updateCows(delta);
 
       // Melt/refreeze glaciers based on temperature
       world.updateGlaciers(delta, weather.temperature);
@@ -581,6 +694,14 @@ async function init() {
           glacierNotifyState = 'frozen';
           showNotification('Glaciers have refrozen in the cold.', 'env');
         }
+      }
+
+      // Handle woodcutting events
+      if (world.woodcutEvents?.length) {
+        for (const evt of world.woodcutEvents) {
+          showNotification(`${evt.agentName} felled a tree. 🪵`, 'env');
+        }
+        world.woodcutEvents.length = 0;
       }
 
       // Handle agent-lit campfires
@@ -684,6 +805,7 @@ async function init() {
     wr.setWeather(weather.meta);
     terrainRenderer.updateGlaciers(world.glacierData);
     terrainRenderer.updateResources(world);
+    terrainRenderer.updateCutTrees(world);
     terrainRenderer.updateAnimals(delta > 0 ? delta : 0, {
       gameTime: time.gameTime,
       dayLength: time.dayLength,
@@ -692,6 +814,9 @@ async function init() {
     horseRenderer.update();
     butterflyRenderer.update(delta > 0 ? delta : 0, weather.current === 'CLEAR');
     beeRenderer.update(delta > 0 ? delta : 0, weather.current === 'CLEAR');
+    sheepRenderer.update(delta > 0 ? delta : 0);
+    highlandCowRenderer.update(delta > 0 ? delta : 0);
+    flowerRenderer.update(delta > 0 ? delta : 0, time.season);
     buildingRenderer.checkAgents(agents);
     wr.updateRain(realDelta, weather.isRaining, weather.isStorm);
     wr.render();

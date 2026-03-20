@@ -7,6 +7,7 @@ const TILE_HEIGHT = {
   [TileType.WATER]:    0.05,
   [TileType.BEACH]:    0.07,
   [TileType.GRASS]:    0.14,
+  [TileType.WOODLAND]: 0.17,
   [TileType.FOREST]:   0.24,
   [TileType.DESERT]:   0.14,
   [TileType.STONE]:    0.34,
@@ -19,6 +20,7 @@ const TILE_COLOR_HSL = {
   [TileType.WATER]:    [208, 82, 55],
   [TileType.BEACH]:    [ 46, 68, 74],  // warm sandy
   [TileType.GRASS]:    [ 94, 62, 50],
+  [TileType.WOODLAND]: [112, 58, 40],
   [TileType.FOREST]:   [132, 66, 30],
   [TileType.DESERT]:   [ 38, 52, 62],  // dry tan
   [TileType.STONE]:    [ 28, 22, 62],
@@ -34,6 +36,8 @@ export class TerrainRenderer {
     this._meshes = []; // tracked for dispose()
     this._animatedAnimals = []; // { mesh, instances: [{baseX,baseY,baseZ,scale,rotY,seed}], config }
     this._animTime = 0;
+    /** "x,z" → {tMesh, fMesh, index, origT, origF} — only populated for FOREST trees */
+    this._treeInstanceMap = new Map();
     this._build();
   }
 
@@ -55,6 +59,7 @@ export class TerrainRenderer {
       [TileType.WATER]:    [],
       [TileType.BEACH]:    [],
       [TileType.GRASS]:    [],
+      [TileType.WOODLAND]: [],
       [TileType.FOREST]:   [],
       [TileType.DESERT]:   [],
       [TileType.STONE]:    [],
@@ -267,10 +272,13 @@ export class TerrainRenderer {
           dummy.scale.set(sc, sc, sc);
           dummy.updateMatrix();
           tMesh.setMatrixAt(i, dummy.matrix);
+          const origT = dummy.matrix.clone();
           dummy.position.set(cx, surfY + foliageY * sc, cz);
           dummy.scale.set(sc * fsx, sc * fsy, sc * fsz);
           dummy.updateMatrix();
           fMesh.setMatrixAt(i, dummy.matrix);
+          const origF = dummy.matrix.clone();
+          this._treeInstanceMap.set(`${tile.x},${tile.z}`, { tMesh, fMesh, index: i, origT, origF });
         });
         tMesh.castShadow = true;
         fMesh.castShadow = true;
@@ -281,13 +289,19 @@ export class TerrainRenderer {
         this._meshes.push(tMesh, fMesh);
       };
 
-      // ── Assign each tile a tree type via deterministic rng ───────────────
+      // ── Assign each tile a tree type via biome regions ───────────────────
+      // Sample at a coarse grid (~5-tile cells) so neighbouring tiles share
+      // a type, then add a small per-tile jitter to soften region edges.
       const grp = { pine: [], oak: [], cherry: [], cherryDeep: [], cherryWhite: [],
                     autOrange: [], autRed: [], autGold: [], darkFir: [], birch: [],
                     maple: [], willow: [], poplar: [], jacaranda: [], teal: [],
                     autPurple: [], spruce: [], lime: [] };
       forestTrees.forEach(tile => {
-        const r = this._rng(tile.x, tile.z, 99);
+        const rx = Math.floor(tile.x / 5);
+        const rz = Math.floor(tile.z / 5);
+        const region = this._rng(rx, rz, 99);
+        const jitter = (this._rng(tile.x, tile.z, 17) - 0.5) * 0.18;
+        const r = Math.max(0, Math.min(0.9999, region + jitter));
         if      (r < 0.08) grp.pine.push(tile);
         else if (r < 0.16) grp.oak.push(tile);
         else if (r < 0.24) grp.cherry.push(tile);
@@ -415,6 +429,119 @@ export class TerrainRenderer {
       // Limes on lime trees — 3–5 per tree
       addFruits(grp.lime,       limeFruitGeom,   limeMat,        0.80, 0.36, 5, 240,
         { scaleMin: 0.80, scaleMax: 1.15 });
+
+      // ── Tree stumps (one per forest tile; hidden until tree is cut) ──────
+      const stumpGeom = new THREE.CylinderGeometry(0.07, 0.11, 0.06, 6);
+      const stumpMat  = new THREE.MeshLambertMaterial({ color: 0x7c4a1f });
+      const stumpMesh = new THREE.InstancedMesh(stumpGeom, stumpMat, forestTrees.length);
+      const stumpZero = new THREE.Object3D();
+      stumpZero.scale.setScalar(0);
+      stumpZero.updateMatrix();
+      const zeroMatrix = stumpZero.matrix.clone();
+      const stumpMap = new Map(); // "x,z" → instanceIndex
+      forestTrees.forEach((tile, i) => {
+        const ox = (this._rng(tile.x, tile.z, 3) - 0.5) * 0.7; // same jitter as tree trunk
+        const oz = (this._rng(tile.x, tile.z, 4) - 0.5) * 0.7;
+        const cx = tile.x * TILE_SIZE + TILE_SIZE / 2 + ox;
+        const cz = tile.z * TILE_SIZE + TILE_SIZE / 2 + oz;
+        // Store the visible matrix; will be shown when tile.treeCut === true
+        stumpZero.scale.setScalar(1);
+        stumpZero.position.set(cx, surfY + 0.03, cz);
+        stumpZero.rotation.set(0, this._rng(tile.x, tile.z, 8) * Math.PI * 2, 0);
+        stumpZero.updateMatrix();
+        const origStump = stumpZero.matrix.clone();
+        stumpMesh.setMatrixAt(i, zeroMatrix); // hidden by default
+        stumpMap.set(`${tile.x},${tile.z}`, { index: i, origStump });
+      });
+      stumpMesh.instanceMatrix.needsUpdate = true;
+      this.scene.add(stumpMesh);
+      this._meshes.push(stumpMesh);
+      this._stumpMesh = stumpMesh;
+      this._stumpMap  = stumpMap;
+    }
+
+    // ── Trees on WOODLAND tiles (open, scattered — 2–3 per tile) ─────────
+    const woodlandTiles = (buckets[TileType.WOODLAND] ?? []).filter(t => this._rng(t.x, t.z, 10) < 0.88);
+    if (woodlandTiles.length > 0) {
+      const wSurfY = TerrainRenderer.surfaceY(TileType.WOODLAND);
+      const wDummy = new THREE.Object3D();
+
+      // Expand each tile into 2–3 tree entries
+      const oakEntries   = [];
+      const birchEntries = [];
+      woodlandTiles.forEach(tile => {
+        const count = 2 + (this._rng(tile.x, tile.z, 400) < 0.50 ? 1 : 0);
+        for (let ti = 0; ti < count; ti++) {
+          const entry = { tile, ti };
+          if (this._rng(tile.x + ti * 7, tile.z, 401) < 0.62) {
+            oakEntries.push(entry);
+          } else {
+            birchEntries.push(entry);
+          }
+        }
+      });
+
+      // Oak woodland trees
+      if (oakEntries.length > 0) {
+        const trunkGeom  = new THREE.CylinderGeometry(0.07, 0.10, 0.34, 5);
+        const canopyGeom = new THREE.SphereGeometry(0.30, 7, 5);
+        const trunkMat   = new THREE.MeshLambertMaterial({ color: 0x6b3a1f });
+        const canopyMat  = new THREE.MeshLambertMaterial({ color: 0x3a8c40 });
+        const tMesh = new THREE.InstancedMesh(trunkGeom,  trunkMat,  oakEntries.length);
+        const fMesh = new THREE.InstancedMesh(canopyGeom, canopyMat, oakEntries.length);
+        oakEntries.forEach(({ tile, ti }, i) => {
+          const ox = (this._rng(tile.x + ti * 7, tile.z,        402) - 0.5) * 1.4;
+          const oz = (this._rng(tile.x,           tile.z + ti * 7, 403) - 0.5) * 1.4;
+          const cx = tile.x * TILE_SIZE + TILE_SIZE / 2 + ox;
+          const cz = tile.z * TILE_SIZE + TILE_SIZE / 2 + oz;
+          const sc = 0.75 + this._rng(tile.x + ti, tile.z, 404) * 0.35;
+          wDummy.rotation.set(0, this._rng(tile.x + ti, tile.z, 405) * Math.PI * 2, 0);
+          wDummy.position.set(cx, wSurfY + 0.17 * sc, cz);
+          wDummy.scale.setScalar(sc);
+          wDummy.updateMatrix();
+          tMesh.setMatrixAt(i, wDummy.matrix);
+          wDummy.position.set(cx, wSurfY + 0.60 * sc, cz);
+          wDummy.scale.setScalar(sc);
+          wDummy.updateMatrix();
+          fMesh.setMatrixAt(i, wDummy.matrix);
+        });
+        tMesh.castShadow = fMesh.castShadow = true;
+        fMesh.receiveShadow = true;
+        tMesh.instanceMatrix.needsUpdate = fMesh.instanceMatrix.needsUpdate = true;
+        this.scene.add(tMesh, fMesh);
+        this._meshes.push(tMesh, fMesh);
+      }
+
+      // Birch woodland trees
+      if (birchEntries.length > 0) {
+        const trunkGeom  = new THREE.CylinderGeometry(0.040, 0.055, 0.44, 5);
+        const canopyGeom = new THREE.SphereGeometry(0.18, 6, 4);
+        const trunkMat   = new THREE.MeshLambertMaterial({ color: 0xc8b48a });
+        const canopyMat  = new THREE.MeshLambertMaterial({ color: 0x90d070 });
+        const tMesh = new THREE.InstancedMesh(trunkGeom,  trunkMat,  birchEntries.length);
+        const fMesh = new THREE.InstancedMesh(canopyGeom, canopyMat, birchEntries.length);
+        birchEntries.forEach(({ tile, ti }, i) => {
+          const ox = (this._rng(tile.x + ti * 11, tile.z,         406) - 0.5) * 1.4;
+          const oz = (this._rng(tile.x,            tile.z + ti * 11, 407) - 0.5) * 1.4;
+          const cx = tile.x * TILE_SIZE + TILE_SIZE / 2 + ox;
+          const cz = tile.z * TILE_SIZE + TILE_SIZE / 2 + oz;
+          const sc = 0.70 + this._rng(tile.x + ti, tile.z, 408) * 0.30;
+          wDummy.rotation.set(0, this._rng(tile.x + ti, tile.z, 409) * Math.PI * 2, 0);
+          wDummy.position.set(cx, wSurfY + 0.22 * sc, cz);
+          wDummy.scale.setScalar(sc);
+          wDummy.updateMatrix();
+          tMesh.setMatrixAt(i, wDummy.matrix);
+          wDummy.position.set(cx, wSurfY + 0.60 * sc, cz);
+          wDummy.scale.setScalar(sc);
+          wDummy.updateMatrix();
+          fMesh.setMatrixAt(i, wDummy.matrix);
+        });
+        tMesh.castShadow = fMesh.castShadow = true;
+        fMesh.receiveShadow = true;
+        tMesh.instanceMatrix.needsUpdate = fMesh.instanceMatrix.needsUpdate = true;
+        this.scene.add(tMesh, fMesh);
+        this._meshes.push(tMesh, fMesh);
+      }
     }
 
     // ── Rocks on STONE tiles ──────────────────────────────────────────────
@@ -691,6 +818,7 @@ export class TerrainRenderer {
     // ── Medicinal herb clusters (FOREST + water-adjacent GRASS) ───────────
     const herbTiles = [
       ...buckets[TileType.FOREST],
+      ...(buckets[TileType.WOODLAND] ?? []),
       ...buckets[TileType.GRASS],
     ].filter(t => t.herbs > 0);
     if (herbTiles.length > 0) {
@@ -889,6 +1017,9 @@ export class TerrainRenderer {
     // Golden koi: fat, deep-bodied
     const fish3BodyGeom  = _mkFishBody(0.12, 0.085, 0.065);
     const fish3LobeGeom  = _mkCaudalLobe(0.065, 0.065, 0.010);
+    // Shared eye geometry for all fish
+    const fishEyeGeom = new THREE.SphereGeometry(0.018, 4, 3);
+    const fishEyeMat  = new THREE.MeshLambertMaterial({ color: 0x0a0a0a });
 
     // Shallow fish (vibrant, quick, near shore)
     const shallowFishConfig = {
@@ -952,9 +1083,12 @@ export class TerrainRenderer {
       [fish1Body, fish1TailL, fish1TailR].forEach(m => {
         m.instanceColor.needsUpdate = true; m.castShadow = false;
       });
+      const fish1Eye = new THREE.InstancedMesh(fishEyeGeom, fishEyeMat, n);
+      fish1Eye.castShadow = false;
       addAnimated(fish1Body, instances1, shallowFishConfig, [
         { mesh: fish1TailL, fishTailL: true, offset: 0.13, tailSplay: 0.20 },
         { mesh: fish1TailR, fishTailR: true, offset: 0.13, tailSplay: 0.20 },
+        { mesh: fish1Eye,   fishEye: true },
       ]);
     }
 
@@ -985,9 +1119,12 @@ export class TerrainRenderer {
       [fish2Body, fish2TailL, fish2TailR].forEach(m => {
         m.instanceColor.needsUpdate = true; m.castShadow = false;
       });
+      const fish2Eye = new THREE.InstancedMesh(fishEyeGeom, fishEyeMat, n);
+      fish2Eye.castShadow = false;
       addAnimated(fish2Body, instances2, deepFishConfig, [
         { mesh: fish2TailL, fishTailL: true, offset: 0.19, tailSplay: 0.18 },
         { mesh: fish2TailR, fishTailR: true, offset: 0.19, tailSplay: 0.18 },
+        { mesh: fish2Eye,   fishEye: true },
       ]);
     }
 
@@ -1024,9 +1161,12 @@ export class TerrainRenderer {
       [fish3Body, fish3TailL, fish3TailR].forEach(m => {
         m.instanceColor.needsUpdate = true; m.castShadow = false;
       });
+      const fish3Eye = new THREE.InstancedMesh(fishEyeGeom, fishEyeMat, n);
+      fish3Eye.castShadow = false;
       addAnimated(fish3Body, instances3, goldenFishConfig, [
         { mesh: fish3TailL, fishTailL: true, offset: 0.12, tailSplay: 0.25 },
         { mesh: fish3TailR, fishTailR: true, offset: 0.12, tailSplay: 0.25 },
+        { mesh: fish3Eye,   fishEye: true },
       ]);
     }
 
@@ -1054,6 +1194,11 @@ export class TerrainRenderer {
       const pigTailGeom  = new THREE.TorusGeometry(0.038, 0.016, 4, 7, Math.PI * 1.6);
       const pigTailMat   = new THREE.MeshLambertMaterial({ color: 0xdd9a85 });
       const pigTailMesh  = new THREE.InstancedMesh(pigTailGeom, pigTailMat, pigTiles.length);
+      // Small dark eyes
+      const pigEyeGeom  = new THREE.SphereGeometry(0.020, 5, 4);
+      const pigEyeMat   = new THREE.MeshLambertMaterial({ color: 0x111111 });
+      const pigEyeLMesh = new THREE.InstancedMesh(pigEyeGeom, pigEyeMat, pigTiles.length);
+      const pigEyeRMesh = new THREE.InstancedMesh(pigEyeGeom, pigEyeMat, pigTiles.length);
       // Four stubby legs
       const pigLegGeom   = new THREE.CylinderGeometry(0.028, 0.022, 0.14, 5);
       const pigLegMat    = new THREE.MeshLambertMaterial({ color: 0xd8a494 });
@@ -1086,17 +1231,119 @@ export class TerrainRenderer {
       pigSnoutMesh.castShadow = true;
       pigEarLMesh.castShadow = true;
       pigEarRMesh.castShadow = true;
+      pigEyeLMesh.castShadow = false;
+      pigEyeRMesh.castShadow = false;
       addAnimated(pigMesh, instances, pigGrazeConfig, [
         { mesh: pigHeadMesh,  offset: 0.22,  useHeadScale: true },
         { mesh: pigSnoutMesh, offset: 0.34,  snout: true, useSnoutScale: true },
         { mesh: pigEarLMesh,  pigEarL: true },
         { mesh: pigEarRMesh,  pigEarR: true },
+        { mesh: pigEyeLMesh,  pigEyeL: true },
+        { mesh: pigEyeRMesh,  pigEyeR: true },
         { mesh: pigTailMesh,  offset: -0.20, tail: true },
         { mesh: pigLegFLMesh, pigLegFL: true },
         { mesh: pigLegFRMesh, pigLegFR: true },
         { mesh: pigLegBLMesh, pigLegBL: true },
         { mesh: pigLegBRMesh, pigLegBR: true },
       ]);
+    }
+
+    // ── Chickens (and chicks) on GRASS tiles ────────────────────────────────
+    const chickenTiles = grassTiles.filter(t => this._rng(t.x, t.z, 60) < 0.032);
+    const chickenConfig = {
+      label: 'Chicken', icon: '🐔',
+      description: 'A clucking chicken pecking at the grass.',
+      driftRadius: 0.08, driftSpeed: 0.4, bobAmount: 0.018, bobSpeed: 3.5,
+      mobile: true, moveSpeed: 0.28, tileType: TileType.GRASS, wanderRadius: 3,
+    };
+    if (chickenTiles.length > 0) {
+      const n = chickenTiles.length;
+      const chickBodyGeom   = new THREE.SphereGeometry(0.13, 7, 5);
+      const chickHeadGeom   = new THREE.SphereGeometry(0.07, 6, 4);
+      const chickBeakGeom   = new THREE.ConeGeometry(0.011, 0.038, 3);
+      const chickCombGeom   = new THREE.BoxGeometry(0.020, 0.036, 0.018);
+      const chickWattleGeom = new THREE.SphereGeometry(0.016, 4, 3);
+      const chickEyeGeom    = new THREE.SphereGeometry(0.011, 4, 3);
+      const chickTailGeom   = new THREE.ConeGeometry(0.040, 0.095, 4);
+      const chickLegGeom    = new THREE.CylinderGeometry(0.012, 0.010, 0.10, 4);
+      const chickWingGeom   = new THREE.BoxGeometry(0.058, 0.038, 0.024);
+
+      const chickBodyMat   = new THREE.MeshLambertMaterial({ color: 0xd4936a });
+      const chickHeadMat   = new THREE.MeshLambertMaterial({ color: 0xd4936a });
+      const chickRedMat    = new THREE.MeshLambertMaterial({ color: 0xcc2222 });
+      const chickEyeMat    = new THREE.MeshLambertMaterial({ color: 0x0a0a0a });
+      const chickBeakMat   = new THREE.MeshLambertMaterial({ color: 0xc8940e });
+      const chickLegMat    = new THREE.MeshLambertMaterial({ color: 0xc8940e });
+      const chickWingMat   = new THREE.MeshLambertMaterial({ color: 0xb87050 });
+      const chickTailMat   = new THREE.MeshLambertMaterial({ color: 0x7a4828 });
+
+      const chickBodyMesh   = new THREE.InstancedMesh(chickBodyGeom, chickBodyMat, n);
+      const chickHeadMesh   = new THREE.InstancedMesh(chickHeadGeom, chickHeadMat, n);
+      const chickBeakMesh   = new THREE.InstancedMesh(chickBeakGeom, chickBeakMat, n);
+      const chickCombMesh   = new THREE.InstancedMesh(chickCombGeom, chickRedMat, n);
+      const chickWattleMesh = new THREE.InstancedMesh(chickWattleGeom, chickRedMat, n);
+      const chickEyeLMesh   = new THREE.InstancedMesh(chickEyeGeom, chickEyeMat, n);
+      const chickEyeRMesh   = new THREE.InstancedMesh(chickEyeGeom, chickEyeMat, n);
+      const chickTailMesh   = new THREE.InstancedMesh(chickTailGeom, chickTailMat, n);
+      const chickLegLMesh   = new THREE.InstancedMesh(chickLegGeom, chickLegMat, n);
+      const chickLegRMesh   = new THREE.InstancedMesh(chickLegGeom, chickLegMat, n);
+      const chickWingLMesh  = new THREE.InstancedMesh(chickWingGeom, chickWingMat, n);
+      const chickWingRMesh  = new THREE.InstancedMesh(chickWingGeom, chickWingMat, n);
+
+      // Adult colour palette: buff, russet, white, brown, red-brown
+      const adultPalette = [0xc8a87a, 0xd4936a, 0xf0e8d0, 0x8a6040, 0xb86038];
+      const _cc = new THREE.Color();
+
+      const chickInstances = chickenTiles.map((tile, idx) => {
+        const ox   = (this._rng(tile.x, tile.z, 61) - 0.5) * 0.90;
+        const oz   = (this._rng(tile.x, tile.z, 62) - 0.5) * 0.90;
+        const seed = this._rng(tile.x, tile.z, 63) * Math.PI * 2;
+        const sr   = this._rng(tile.x, tile.z, 64);
+        const tx   = tile.x + 0.5 + ox * 0.5;
+        const tz   = tile.z + 0.5 + oz * 0.5;
+        // ~50% chicks (small, yellow), rest adult hens
+        const isChick = sr < 0.50;
+        const s = isChick ? 0.48 + sr * 0.28 : 0.82 + (sr - 0.50) * 0.30;
+        if (isChick) {
+          _cc.setHex(0xf0d060);
+        } else {
+          const ci = Math.floor((sr - 0.50) / 0.50 * adultPalette.length);
+          _cc.setHex(adultPalette[Math.min(ci, adultPalette.length - 1)]);
+        }
+        chickBodyMesh.setColorAt(idx, _cc);
+        chickHeadMesh.setColorAt(idx, _cc);
+        return {
+          x: tx, z: tz, targetX: tx, targetZ: tz,
+          homeX: tile.x, homeZ: tile.z,
+          baseY: surfY(TileType.GRASS) + 0.18 * s,
+          scale: [0.95 * s, 0.72 * s, 1.05 * s],
+          headScale: [0.82 * s, 0.82 * s, 0.88 * s],
+          chickSize: s,
+          isChick,
+          rotY: seed, seed,
+        };
+      });
+      chickBodyMesh.instanceColor.needsUpdate = true;
+      chickHeadMesh.instanceColor.needsUpdate = true;
+      chickBodyMesh.castShadow = true;
+      chickHeadMesh.castShadow = true;
+      chickEyeLMesh.castShadow = false;
+      chickEyeRMesh.castShadow = false;
+      addAnimated(chickBodyMesh, chickInstances, chickenConfig, [
+        { mesh: chickHeadMesh,   offset: 0.13, useHeadScale: true },
+        { mesh: chickBeakMesh,   offset: 0.21, beak: true },
+        { mesh: chickCombMesh,   chickComb: true },
+        { mesh: chickWattleMesh, chickWattle: true },
+        { mesh: chickEyeLMesh,   chickEyeL: true },
+        { mesh: chickEyeRMesh,   chickEyeR: true },
+        { mesh: chickTailMesh,   chickTail: true },
+        { mesh: chickLegLMesh,   chickLegL: true },
+        { mesh: chickLegRMesh,   chickLegR: true },
+        { mesh: chickWingLMesh,  chickWingL: true },
+        { mesh: chickWingRMesh,  chickWingR: true },
+      ]);
+      // Register nest locations so the simulation can track egg laying
+      this.world.initChickenNests(chickenTiles.map(t => ({ x: t.x, z: t.z })));
     }
 
     // ── Birds on FOREST and GRASS tiles (mobile, improved sprites) ──────────
@@ -1110,10 +1357,12 @@ export class TerrainRenderer {
       mobile: true, moveSpeed: 0.55, tileTypes: [TileType.GRASS, TileType.FOREST],
     };
 
-    // Improved bird: rounded body + head + beak
+    // Improved bird: rounded body + head + beak + eyes
     const birdBodyGeom = new THREE.SphereGeometry(0.065, 6, 4);
     const birdHeadGeom = new THREE.SphereGeometry(0.04, 4, 3);
     const birdBeakGeom = new THREE.ConeGeometry(0.012, 0.055, 4);
+    const birdEyeGeom  = new THREE.SphereGeometry(0.013, 4, 3);
+    const birdEyeMat   = new THREE.MeshLambertMaterial({ color: 0x0a0a0a });
 
     const addBirds = (tiles, tileType, offset) => {
       if (tiles.length === 0) return;
@@ -1124,6 +1373,10 @@ export class TerrainRenderer {
       const birdBodyMesh = new THREE.InstancedMesh(birdBodyGeom, birdBodyMat, tiles.length);
       const birdHeadMesh = new THREE.InstancedMesh(birdHeadGeom, birdHeadMat, tiles.length);
       const birdBeakMesh = new THREE.InstancedMesh(birdBeakGeom, birdBeakMat, tiles.length);
+      const birdEyeLMesh = new THREE.InstancedMesh(birdEyeGeom,  birdEyeMat,  tiles.length);
+      const birdEyeRMesh = new THREE.InstancedMesh(birdEyeGeom,  birdEyeMat,  tiles.length);
+      birdEyeLMesh.castShadow = false;
+      birdEyeRMesh.castShadow = false;
       const flyY = surfY(TileType.GRASS) + 0.5;
       const instances = tiles.map((tile) => {
         const ox = (this._rng(tile.x, tile.z, offset) - 0.5) * 0.8;
@@ -1131,11 +1384,14 @@ export class TerrainRenderer {
         const seed = this._rng(tile.x, tile.z, offset + 2) * Math.PI * 2;
         const tx = tile.x + 0.5 + ox * 0.5;
         const tz = tile.z + 0.5 + oz * 0.5;
+        // ~25% fledglings (s 0.42–0.58), rest adults/larger (s 0.82–1.35)
+        const sr = this._rng(tile.x, tile.z, offset + 3);
+        const s  = sr < 0.25 ? 0.42 + sr * 0.64 : 0.82 + (sr - 0.25) * 0.71;
         return {
           x: tx, z: tz, targetX: tx, targetZ: tz,
           baseY: flyY,
-          scale: [1, 1.1, 0.75],
-          headScale: [0.85, 1, 0.9],
+          scale: [s, 1.1 * s, 0.75 * s],
+          headScale: [0.85 * s, s, 0.9 * s],
           rotY: seed,
           seed,
         };
@@ -1143,6 +1399,8 @@ export class TerrainRenderer {
       addAnimated(birdBodyMesh, instances, birdMobileConfig, [
         { mesh: birdHeadMesh, offset: 0.07 },
         { mesh: birdBeakMesh, offset: 0.12, beak: true },
+        { mesh: birdEyeLMesh, birdEyeL: true },
+        { mesh: birdEyeRMesh, birdEyeR: true },
       ]);
     };
     addBirds(birdForestTiles, TileType.FOREST, 52);
@@ -1220,6 +1478,12 @@ export class TerrainRenderer {
         sparkle: sparklePoints,
         hummingbird: true,
       };
+      const humEyeGeom  = new THREE.SphereGeometry(0.010, 4, 3);
+      const humEyeMat   = new THREE.MeshLambertMaterial({ color: 0x0a0a0a });
+      const humEyeLMesh = new THREE.InstancedMesh(humEyeGeom, humEyeMat, 1);
+      const humEyeRMesh = new THREE.InstancedMesh(humEyeGeom, humEyeMat, 1);
+      humEyeLMesh.castShadow = false;
+      humEyeRMesh.castShadow = false;
       addAnimated(humBodyMesh, humInstances, humConfig, [
         { mesh: humHeadMesh, offset: 0.07 },
         { mesh: gorgetMesh, offset: 0.055, gorget: true },
@@ -1227,6 +1491,8 @@ export class TerrainRenderer {
         { mesh: wingLMesh, offset: 0.0, wingL: true },
         { mesh: wingRMesh, offset: 0.0, wingR: true },
         { mesh: tailMesh, offset: -0.07, tail: true },
+        { mesh: humEyeLMesh, birdEyeL: true },
+        { mesh: humEyeRMesh, birdEyeR: true },
       ]);
     }
 
@@ -1307,30 +1573,47 @@ export class TerrainRenderer {
         label: 'Whale', icon: '🐋',
         description: 'A great whale, sole sovereign of the deep — ancient and unhurried.',
         driftRadius: 0.05, driftSpeed: 0.08, bobAmount: 0.09, bobSpeed: 0.5,
-        mobile: true, moveSpeed: 0.08, tileTypes: [TileType.DEEP_WATER], wanderRadius: 12,
+        mobile: true, moveSpeed: 0.08, tileTypes: [TileType.DEEP_WATER], wanderRadius: 7,
+        constrainToTypes: [TileType.DEEP_WATER],
         whaleSpout: { mist: mistLayer, spray: sprayLayer },
       };
+      const whaleEyeGeom = new THREE.SphereGeometry(0.048, 6, 5);
+      const whaleEyeMat  = new THREE.MeshLambertMaterial({ color: 0x0a0a0a });
+      const whaleEyeL    = new THREE.InstancedMesh(whaleEyeGeom, whaleEyeMat, 1);
+      const whaleEyeR    = new THREE.InstancedMesh(whaleEyeGeom, whaleEyeMat, 1);
       whaleMesh.castShadow = true;
       bellyMesh.castShadow = true;
       flukeL.castShadow = true;
       flukeR.castShadow = true;
+      whaleEyeL.castShadow = false;
+      whaleEyeR.castShadow = false;
       addAnimated(whaleMesh, whaleInstances, whaleConfig, [
-        { mesh: bellyMesh, offset: 0,     whaleBelly: true },
-        { mesh: flukeL,    offset: -0.85, flukeL: true },
-        { mesh: flukeR,    offset: -0.85, flukeR: true },
+        { mesh: bellyMesh,  offset: 0,     whaleBelly: true },
+        { mesh: flukeL,     offset: -0.85, flukeL: true },
+        { mesh: flukeR,     offset: -0.85, flukeR: true },
+        { mesh: whaleEyeL,  whaleEyeL: true },
+        { mesh: whaleEyeR,  whaleEyeR: true },
       ]);
     }
 
     // ── Crabs on BEACH tiles ──────────────────────────────────────────────
     const beachAnimalTiles = (buckets[TileType.BEACH] ?? []).filter(t => this._rng(t.x, t.z, 90) < 0.10);
     if (beachAnimalTiles.length > 0) {
-      const bodyGeom  = new THREE.SphereGeometry(0.075, 6, 4);
-      const clawGeom  = new THREE.SphereGeometry(0.038, 5, 4);
-      const bodyMat   = new THREE.MeshLambertMaterial({ color: 0xcc4418 });
-      const clawMat   = new THREE.MeshLambertMaterial({ color: 0xaa3210 });
-      const bodyMesh  = new THREE.InstancedMesh(bodyGeom, bodyMat, beachAnimalTiles.length);
-      const clawLMesh = new THREE.InstancedMesh(clawGeom, clawMat, beachAnimalTiles.length);
-      const clawRMesh = new THREE.InstancedMesh(clawGeom, clawMat, beachAnimalTiles.length);
+      const bodyGeom   = new THREE.SphereGeometry(0.075, 6, 4);
+      const clawGeom   = new THREE.SphereGeometry(0.038, 5, 4);
+      const eyeGeom    = new THREE.SphereGeometry(0.022, 5, 4);
+      const pupilGeom  = new THREE.SphereGeometry(0.012, 4, 3);
+      const bodyMat    = new THREE.MeshLambertMaterial({ color: 0xcc4418 });
+      const clawMat    = new THREE.MeshLambertMaterial({ color: 0xaa3210 });
+      const eyeMat     = new THREE.MeshLambertMaterial({ color: 0xf0e8d0 });
+      const pupilMat   = new THREE.MeshLambertMaterial({ color: 0x111111 });
+      const bodyMesh   = new THREE.InstancedMesh(bodyGeom,  bodyMat,  beachAnimalTiles.length);
+      const clawLMesh  = new THREE.InstancedMesh(clawGeom,  clawMat,  beachAnimalTiles.length);
+      const clawRMesh  = new THREE.InstancedMesh(clawGeom,  clawMat,  beachAnimalTiles.length);
+      const eyeLMesh   = new THREE.InstancedMesh(eyeGeom,   eyeMat,   beachAnimalTiles.length);
+      const eyeRMesh   = new THREE.InstancedMesh(eyeGeom,   eyeMat,   beachAnimalTiles.length);
+      const pupilLMesh = new THREE.InstancedMesh(pupilGeom, pupilMat, beachAnimalTiles.length);
+      const pupilRMesh = new THREE.InstancedMesh(pupilGeom, pupilMat, beachAnimalTiles.length);
 
       const crabInstances = beachAnimalTiles.map(tile => {
         const ox   = (this._rng(tile.x, tile.z, 91) - 0.5) * 1.0;
@@ -1338,13 +1621,17 @@ export class TerrainRenderer {
         const seed = this._rng(tile.x, tile.z, 93) * Math.PI * 2;
         const tx   = tile.x + 0.5 + ox * 0.5;
         const tz   = tile.z + 0.5 + oz * 0.5;
+        // ~25% tiny crabs (s 0.35–0.55), rest adults/large (s 0.80–1.20)
+        const sr = this._rng(tile.x, tile.z, 95);
+        const s  = sr < 0.25 ? 0.35 + sr * 0.80 : 0.80 + (sr - 0.25) * 0.53;
         return {
           x: tx, z: tz, targetX: tx, targetZ: tz,
           homeX: tile.x, homeZ: tile.z,
           baseY: surfY(TileType.BEACH) + 0.02,
-          scale: [1.6, 0.5, 1.0],
+          scale: [1.6 * s, 0.5 * s, 1.0 * s],
           rotY: seed, seed,
           crabSide: this._rng(tile.x, tile.z, 94) < 0.5 ? 1 : -1,
+          crabSize: s,
         };
       });
 
@@ -1355,12 +1642,20 @@ export class TerrainRenderer {
         mobile: true, moveSpeed: 0.5, tileTypes: [TileType.BEACH], wanderRadius: 3,
         wagAmp: 0.07, wagFreq: 9.0, burstCoast: true, crabWalk: true,
       };
-      bodyMesh.castShadow  = false;
-      clawLMesh.castShadow = false;
-      clawRMesh.castShadow = false;
+      bodyMesh.castShadow   = false;
+      clawLMesh.castShadow  = false;
+      clawRMesh.castShadow  = false;
+      eyeLMesh.castShadow   = false;
+      eyeRMesh.castShadow   = false;
+      pupilLMesh.castShadow = false;
+      pupilRMesh.castShadow = false;
       addAnimated(bodyMesh, crabInstances, crabConfig, [
-        { mesh: clawLMesh, crabClawL: true },
-        { mesh: clawRMesh, crabClawR: true },
+        { mesh: clawLMesh,  crabClawL:   true },
+        { mesh: clawRMesh,  crabClawR:   true },
+        { mesh: eyeLMesh,   crabEyeL:    true },
+        { mesh: eyeRMesh,   crabEyeR:    true },
+        { mesh: pupilLMesh, crabPupilL:  true },
+        { mesh: pupilRMesh, crabPupilR:  true },
       ]);
     }
 
@@ -1511,8 +1806,21 @@ export class TerrainRenderer {
               }
             }
             const move = Math.min(spd * realDelta, dist);
-            inst.x += (dx / dist) * move;
-            inst.z += (dz / dist) * move;
+            const nx = inst.x + (dx / dist) * move;
+            const nz = inst.z + (dz / dist) * move;
+            // Constrain to valid tile types mid-path (keeps whale inside deep water)
+            if (config.constrainToTypes) {
+              const nTile = this.world.getTile(Math.floor(nx), Math.floor(nz));
+              if (nTile && config.constrainToTypes.includes(nTile.type)) {
+                inst.x = nx; inst.z = nz;
+              } else {
+                // Invalid tile — redirect target back to home
+                inst.targetX = (inst.homeX ?? Math.round(inst.x)) + 0.5;
+                inst.targetZ = (inst.homeZ ?? Math.round(inst.z)) + 0.5;
+              }
+            } else {
+              inst.x = nx; inst.z = nz;
+            }
             // Fish-swim: sinusoidal lateral drift gives S-curve swimming paths.
             // Amplitude fades to zero as fish nears its target so it arrives cleanly.
             if (config.fishSwim && dist > 0.01) {
@@ -1839,11 +2147,34 @@ export class TerrainRenderer {
             part.mesh.setMatrixAt(i, dummy.matrix);
           } else if (part.crabClawL || part.crabClawR) {
             // Claws reach forward from crab's visual facing (which is sideways to movement)
+            const cs = inst.crabSize ?? 1;
             const side = part.crabClawL ? 1 : -1;
-            const cx = px + Math.sin(ry) * 0.20 + Math.cos(ry) * side * 0.14;
-            const cz = pz + Math.cos(ry) * 0.20 - Math.sin(ry) * side * 0.14;
-            dummy.position.set(cx, py + 0.02, cz);
-            dummy.scale.set(1.3, 1.0, 1.3);
+            const cx = px + Math.sin(ry) * 0.20 * cs + Math.cos(ry) * side * 0.14 * cs;
+            const cz = pz + Math.cos(ry) * 0.20 * cs - Math.sin(ry) * side * 0.14 * cs;
+            dummy.position.set(cx, py + 0.02 * cs, cz);
+            dummy.scale.set(1.3 * cs, 1.0 * cs, 1.3 * cs);
+            dummy.rotation.set(0, ry, 0);
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.crabEyeL || part.crabEyeR) {
+            // Eyes on short stalks at the front of the body, spread to sides
+            const cs = inst.crabSize ?? 1;
+            const side = part.crabEyeL ? -1 : 1;
+            const ex = px + Math.sin(ry) * 0.07 * cs + Math.cos(ry) * side * 0.055 * cs;
+            const ez = pz + Math.cos(ry) * 0.07 * cs - Math.sin(ry) * side * 0.055 * cs;
+            dummy.position.set(ex, py + 0.045 * cs, ez);
+            dummy.scale.set(cs, cs, cs);
+            dummy.rotation.set(0, ry, 0);
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.crabPupilL || part.crabPupilR) {
+            // Pupils on the forward face of each eye stalk
+            const cs = inst.crabSize ?? 1;
+            const side = part.crabPupilL ? -1 : 1;
+            const ex = px + Math.sin(ry) * 0.085 * cs + Math.cos(ry) * side * 0.055 * cs;
+            const ez = pz + Math.cos(ry) * 0.085 * cs - Math.sin(ry) * side * 0.055 * cs;
+            dummy.position.set(ex, py + 0.048 * cs, ez);
+            dummy.scale.set(cs, cs, cs);
             dummy.rotation.set(0, ry, 0);
             dummy.updateMatrix();
             part.mesh.setMatrixAt(i, dummy.matrix);
@@ -1931,6 +2262,109 @@ export class TerrainRenderer {
             dummy.rotation.order = 'YXZ';
             dummy.rotation.y = ry;
             dummy.rotation.x = 0;
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.pigEyeL || part.pigEyeR) {
+            // Eyes on the sides of the head (head centre is at offset 0.22)
+            const ps = inst.pigSize ?? 1;
+            const side = part.pigEyeL ? -1 : 1;
+            const ex = px + Math.sin(ry) * 0.22 * ps + Math.cos(ry) * side * 0.090 * ps;
+            const ez = pz + Math.cos(ry) * 0.22 * ps - Math.sin(ry) * side * 0.090 * ps;
+            dummy.position.set(ex, py + 0.065 * ps, ez);
+            dummy.scale.set(ps, ps, ps);
+            dummy.rotation.set(0, ry, 0);
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.birdEyeL || part.birdEyeR) {
+            // Tiny eyes on the sides of the bird's head
+            const bs = inst.scale[0];
+            const side = part.birdEyeL ? -1 : 1;
+            const ex = px + Math.sin(ry) * 0.082 * bs + Math.cos(ry) * side * 0.028 * bs;
+            const ez = pz + Math.cos(ry) * 0.082 * bs - Math.sin(ry) * side * 0.028 * bs;
+            dummy.position.set(ex, py + 0.018 * bs, ez);
+            dummy.scale.set(bs, bs, bs);
+            dummy.rotation.set(0, ry, 0);
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.whaleEyeL || part.whaleEyeR) {
+            // Eyes on the sides of the whale body, 1/3 from the head
+            const side = part.whaleEyeL ? 1 : -1;
+            const ex = px + Math.sin(ry) * 0.38 + Math.cos(ry) * side * 0.28;
+            const ez = pz + Math.cos(ry) * 0.38 - Math.sin(ry) * side * 0.28;
+            dummy.position.set(ex, py + 0.06, ez);
+            dummy.scale.set(1, 1, 1);
+            dummy.rotation.set(0, ry, 0);
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.chickEyeL || part.chickEyeR) {
+            const cs = inst.chickSize ?? 1;
+            const side = part.chickEyeL ? -1 : 1;
+            const ex = px + Math.sin(ry) * 0.13 * cs + Math.cos(ry) * side * 0.054 * cs;
+            const ez = pz + Math.cos(ry) * 0.13 * cs - Math.sin(ry) * side * 0.054 * cs;
+            dummy.position.set(ex, py + 0.022 * cs, ez);
+            dummy.scale.set(cs, cs, cs);
+            dummy.rotation.set(0, ry, 0);
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.chickComb) {
+            const cs = inst.chickSize ?? 1;
+            if (inst.isChick) {
+              dummy.scale.set(0, 0, 0); dummy.position.set(px, py, pz);
+            } else {
+              const hx2 = px + Math.sin(ry) * 0.13 * cs;
+              const hz2 = pz + Math.cos(ry) * 0.13 * cs;
+              dummy.position.set(hx2, py + 0.095 * cs, hz2);
+              dummy.scale.set(cs, cs, cs);
+              dummy.rotation.set(0, ry, 0);
+            }
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.chickWattle) {
+            const cs = inst.chickSize ?? 1;
+            if (inst.isChick) {
+              dummy.scale.set(0, 0, 0); dummy.position.set(px, py, pz);
+            } else {
+              const hx2 = px + Math.sin(ry) * 0.20 * cs;
+              const hz2 = pz + Math.cos(ry) * 0.20 * cs;
+              dummy.position.set(hx2, py - 0.018 * cs, hz2);
+              dummy.scale.set(cs, cs, cs);
+              dummy.rotation.set(0, ry, 0);
+            }
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.chickTail) {
+            const cs = inst.chickSize ?? 1;
+            const tx2 = px - Math.sin(ry) * 0.14 * cs;
+            const tz2 = pz - Math.cos(ry) * 0.14 * cs;
+            dummy.position.set(tx2, py + 0.04 * cs, tz2);
+            dummy.scale.set(cs, cs, cs);
+            dummy.rotation.order = 'YXZ';
+            dummy.rotation.y = ry;
+            dummy.rotation.x = -Math.PI * 0.25;
+            dummy.rotation.z = 0;
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.chickLegL || part.chickLegR) {
+            const cs = inst.chickSize ?? 1;
+            const side = part.chickLegL ? -1 : 1;
+            const lx = px + Math.cos(ry) * side * 0.055 * cs;
+            const lz = pz - Math.sin(ry) * side * 0.055 * cs;
+            dummy.position.set(lx, py - 0.082 * cs, lz);
+            dummy.scale.set(cs, cs, cs);
+            dummy.rotation.set(0, ry, 0);
+            dummy.updateMatrix();
+            part.mesh.setMatrixAt(i, dummy.matrix);
+          } else if (part.chickWingL || part.chickWingR) {
+            const cs = inst.chickSize ?? 1;
+            const side = part.chickWingL ? -1 : 1;
+            const wx = px + Math.cos(ry) * side * 0.115 * cs;
+            const wz = pz - Math.sin(ry) * side * 0.115 * cs;
+            dummy.position.set(wx, py - 0.005 * cs, wz);
+            dummy.scale.set(cs, cs, cs);
+            dummy.rotation.order = 'YXZ';
+            dummy.rotation.y = ry;
+            dummy.rotation.x = 0;
+            dummy.rotation.z = side * 0.28;
             dummy.updateMatrix();
             part.mesh.setMatrixAt(i, dummy.matrix);
           } else {
@@ -2079,6 +2513,51 @@ export class TerrainRenderer {
   }
 
   /** Fade herb and mushroom meshes to grey as tiles deplete */
+  /** Show/hide tree trunk+foliage and stump based on world.cutTrees state. */
+  updateCutTrees(world) {
+    if (!this._treeInstanceMap.size) return;
+
+    const zeroM = (() => {
+      const d = new THREE.Object3D();
+      d.scale.setScalar(0);
+      d.updateMatrix();
+      return d.matrix.clone();
+    })();
+
+    if (!this._cutTreesState) this._cutTreesState = new Map();
+    const meshesToUpdate = new Set();
+
+    for (const [key, entry] of this._treeInstanceMap) {
+      const [x, z] = key.split(',').map(Number);
+      const tile = world.getTile(x, z);
+      const isCut = !!(tile && tile.treeCut);
+      if (this._cutTreesState.get(key) === isCut) continue; // no change
+      this._cutTreesState.set(key, isCut);
+
+      // Tree trunk + foliage
+      if (isCut) {
+        entry.tMesh.setMatrixAt(entry.index, zeroM);
+        entry.fMesh.setMatrixAt(entry.index, zeroM);
+      } else {
+        entry.tMesh.setMatrixAt(entry.index, entry.origT);
+        entry.fMesh.setMatrixAt(entry.index, entry.origF);
+      }
+      meshesToUpdate.add(entry.tMesh);
+      meshesToUpdate.add(entry.fMesh);
+
+      // Stump
+      if (this._stumpMesh && this._stumpMap) {
+        const stumpEntry = this._stumpMap.get(key);
+        if (stumpEntry) {
+          this._stumpMesh.setMatrixAt(stumpEntry.index, isCut ? stumpEntry.origStump : zeroM);
+          meshesToUpdate.add(this._stumpMesh);
+        }
+      }
+    }
+
+    for (const mesh of meshesToUpdate) mesh.instanceMatrix.needsUpdate = true;
+  }
+
   updateResources(world) {
     const color = new THREE.Color();
     if (this._herbHeadMesh && this._herbTiles) {

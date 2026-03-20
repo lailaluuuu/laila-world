@@ -10,10 +10,15 @@ const STATE_COLOR = {
   [AgentState.SLEEPING]:    new THREE.Color(0x4c6ef5),
   [AgentState.SOCIALIZING]: new THREE.Color(0xa78bfa),
   [AgentState.DISCOVERING]: new THREE.Color(0xfb923c),
+  [AgentState.PERFORMING]:  new THREE.Color(0xf472b6),
 };
 
+const MUSIC_NOTES = ['♪', '♫', '𝅗𝅥', '♩', '🎵'];
 
 const DEAD_COLOR = new THREE.Color(0x2a2a2a);
+
+// Six varied skin tones, assigned round-robin by agent ID
+const SKIN_TONES = [0xf5d0a9, 0xebb98a, 0xd4956e, 0xc98b6a, 0xe8c49a, 0xbf8860];
 
 
 export class AgentRenderer {
@@ -30,28 +35,33 @@ export class AgentRenderer {
     /** Map<agentId, HTMLElement> */
     this._bubbleEls = new Map();
 
+    // Music notes DOM overlay
+    this._notesContainer = document.createElement('div');
+    this._notesContainer.id = 'music-notes';
+    document.body.appendChild(this._notesContainer);
+    /** Map<agentId, { timer: number }> — tracks when to spawn next note */
+    this._noteTimers = new Map();
+
     this._build();
   }
 
   _build() {
-    // Sheep wool — overlapping spheres make a fluffy cloud-like body
-    this._puffData = [
-      { geom: new THREE.SphereGeometry(0.22, 8, 6),  x:  0,     y: 0.15, z:  0    },
-      { geom: new THREE.SphereGeometry(0.18, 7, 5),  x: -0.17,  y: 0.13, z:  0.02 },
-      { geom: new THREE.SphereGeometry(0.18, 7, 5),  x:  0.17,  y: 0.13, z:  0.02 },
-      { geom: new THREE.SphereGeometry(0.17, 7, 5),  x:  0,     y: 0.27, z: -0.02 },
-      { geom: new THREE.SphereGeometry(0.155, 7, 5), x: -0.09,  y: 0.22, z:  0.12 },
-      { geom: new THREE.SphereGeometry(0.155, 7, 5), x:  0.09,  y: 0.22, z:  0.12 },
-      { geom: new THREE.SphereGeometry(0.14, 7, 5),  x:  0,     y: 0.13, z: -0.17 },
-    ];
-
-    this._headGeom  = new THREE.SphereGeometry(0.10, 8, 6);
-    this._eyeGeom   = new THREE.SphereGeometry(0.022, 5, 4);
-    this._legGeom   = new THREE.CylinderGeometry(0.036, 0.030, 0.16, 5);
-
+    // Shared geometries — upright humanoid people
+    this._bodyGeom = new THREE.CapsuleGeometry(0.155, 0.36, 4, 8);
+    this._headGeom = new THREE.SphereGeometry(0.155, 8, 7);
+    this._eyeGeom  = new THREE.SphereGeometry(0.038, 5, 4);
     this._eyeMat   = new THREE.MeshStandardMaterial({ color: 0x111122, roughness: 0.5 });
-    this._faceMat  = new THREE.MeshStandardMaterial({ color: 0xdcc8a0, roughness: 0.85 });
-    this._legMat   = new THREE.MeshStandardMaterial({ color: 0xbcaa90, roughness: 0.90 });
+    this._lashGeom = new THREE.BoxGeometry(0.007, 0.043, 0.006);
+    this._lashMat  = new THREE.MeshStandardMaterial({ color: 0x111122, roughness: 0.5 });
+
+    // Instrument geometries (lute + drum)
+    this._luteBodyGeom  = new THREE.SphereGeometry(0.095, 8, 6);
+    this._luteNeckGeom  = new THREE.CylinderGeometry(0.016, 0.012, 0.26, 5);
+    this._drumGeom      = new THREE.CylinderGeometry(0.10, 0.10, 0.07, 10);
+    this._drumTopGeom   = new THREE.CylinderGeometry(0.102, 0.102, 0.008, 10);
+    this._woodMat       = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.8 });
+    this._drumMat       = new THREE.MeshStandardMaterial({ color: 0x5c3d1e, roughness: 0.85 });
+    this._drumskinMat   = new THREE.MeshStandardMaterial({ color: 0xe8d5a3, roughness: 0.9 });
 
     // Shared boat geometries
     this._boatHullGeom = new THREE.BoxGeometry(0.70, 0.11, 0.32);
@@ -80,6 +90,38 @@ export class AgentRenderer {
     }
   }
 
+  _addEyelashes(group, eyePos) {
+    const offsets = [-0.028, -0.010, 0.010, 0.028];
+    const tilts   = [  0.35,   0.12, -0.12, -0.35];
+    for (let i = 0; i < 4; i++) {
+      const lash = new THREE.Mesh(this._lashGeom, this._lashMat);
+      lash.position.set(eyePos.x + offsets[i], eyePos.y + 0.043, eyePos.z + 0.004);
+      lash.rotation.z = tilts[i];
+      group.add(lash);
+    }
+  }
+
+  _buildInstrument(isLute) {
+    const g = new THREE.Group();
+    if (isLute) {
+      const body = new THREE.Mesh(this._luteBodyGeom, this._woodMat);
+      body.scale.set(1, 1.1, 0.55);
+      const neck = new THREE.Mesh(this._luteNeckGeom, this._woodMat);
+      neck.position.y = 0.19;
+      g.add(body, neck);
+    } else {
+      const shell = new THREE.Mesh(this._drumGeom, this._drumMat);
+      const top   = new THREE.Mesh(this._drumTopGeom, this._drumskinMat);
+      top.position.y = 0.039;
+      g.add(shell, top);
+    }
+    // Held at right side, chest height, angled outward
+    g.position.set(0.22, 0.05, 0.08);
+    g.rotation.set(0, 0, -0.4);
+    g.visible = false;
+    return g;
+  }
+
   _buildBoat() {
     const bg = new THREE.Group();
 
@@ -99,48 +141,43 @@ export class AgentRenderer {
   }
 
   _createMeshFor(agent) {
-    const isBlackSheep = agent.id === 1;
+    const skinColor = SKIN_TONES[agent.id % SKIN_TONES.length];
+
     const bodyMat = new THREE.MeshStandardMaterial({
-      color: isBlackSheep ? 0x1a1a1a : 0xf5f2ec,
-      roughness: 0.72,
+      color: STATE_COLOR[agent.state] ?? STATE_COLOR[AgentState.WANDERING],
+      roughness: 0.78,
     });
+    const headMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.85 });
 
-    // Wool puffs — all share bodyMat so state colour tints the whole fleece
-    const woolPuffs = this._puffData.map(({ geom, x, y, z }) => {
-      const puff = new THREE.Mesh(geom, bodyMat);
-      puff.position.set(x, y, z);
-      puff.castShadow = true;
-      return puff;
-    });
-    const body = woolPuffs[0]; // used for hit-testing
+    const body = new THREE.Mesh(this._bodyGeom, bodyMat);
+    body.castShadow = true;
 
-    // Head — small, forward-facing
-    const head = new THREE.Mesh(this._headGeom, this._faceMat);
-    head.position.set(0, 0.12, 0.26);
+    const head = new THREE.Mesh(this._headGeom, headMat);
+    head.castShadow = true;
+    head.position.y = 0.39;
 
-    // Eyes
+    // Eyes — share geometry + material
     const eyeL = new THREE.Mesh(this._eyeGeom, this._eyeMat);
     const eyeR = new THREE.Mesh(this._eyeGeom, this._eyeMat);
-    eyeL.position.set(-0.048, 0.15, 0.30);
-    eyeR.position.set( 0.048, 0.15, 0.30);
+    eyeL.position.set(-0.065, 0.42, 0.125);
+    eyeR.position.set( 0.065, 0.42, 0.125);
 
-    // Four stubby legs — stored for walk animation (diagonal pairs: [0,3] and [1,2])
-    const legOffsets = [[-0.09, -0.12, 0.07], [0.09, -0.12, 0.07], [-0.09, -0.12, -0.07], [0.09, -0.12, -0.07]];
-    const legs = legOffsets.map(([x, y, z]) => {
-      const leg = new THREE.Mesh(this._legGeom, this._legMat);
-      leg.position.set(x, y, z);
-      return leg;
-    });
-
-    const boatGroup = this._buildBoat();
+    const boatGroup       = this._buildBoat();
     boatGroup.visible = false;
 
+    const instrumentGroup = this._buildInstrument(agent.id % 2 === 0);
+
     const group = new THREE.Group();
-    group.add(...woolPuffs, head, eyeL, eyeR, ...legs, boatGroup);
+    group.add(body, head, eyeL, eyeR, boatGroup, instrumentGroup);
+
+    if (agent.gender === 'female') {
+      this._addEyelashes(group, eyeL.position);
+      this._addEyelashes(group, eyeR.position);
+    }
     group.userData.agentId = agent.id;
 
     this.scene.add(group);
-    this.meshes.push({ group, body, bodyMat, boatGroup, legs, agent });
+    this.meshes.push({ group, body, bodyMat, headMat, boatGroup, instrumentGroup, agent });
   }
 
   /** Call this when a new agent is born at runtime */
@@ -150,23 +187,30 @@ export class AgentRenderer {
 
   /** Remove all agent meshes and free GPU memory */
   dispose() {
-    for (const { group, bodyMat } of this.meshes) {
+    for (const { group, bodyMat, headMat } of this.meshes) {
       this.scene.remove(group);
       bodyMat.dispose();
+      headMat.dispose();
     }
-    for (const { geom } of this._puffData) geom.dispose();
+    this._bodyGeom.dispose();
     this._headGeom.dispose();
     this._eyeGeom.dispose();
-    this._legGeom.dispose();
     this._eyeMat.dispose();
-    this._faceMat.dispose();
-    this._legMat.dispose();
+    this._lashGeom.dispose();
+    this._lashMat.dispose();
     this._boatHullGeom.dispose();
     this._boatMastGeom.dispose();
     this._sailGeom.dispose();
     this._boatHullMat.dispose();
     this._boatMastMat.dispose();
     this._sailMat.dispose();
+    this._luteBodyGeom.dispose();
+    this._luteNeckGeom.dispose();
+    this._drumGeom.dispose();
+    this._drumTopGeom.dispose();
+    this._woodMat.dispose();
+    this._drumMat.dispose();
+    this._drumskinMat.dispose();
     this.scene.remove(this._ring);
     this._ring.geometry.dispose();
     this._ring.material.dispose();
@@ -174,6 +218,8 @@ export class AgentRenderer {
     this._bubbleEls.forEach(el => el.remove());
     this._bubbleEls.clear();
     this._bubbleContainer.remove();
+    this._notesContainer.remove();
+    this._noteTimers.clear();
   }
 
   update(camera) {
@@ -188,12 +234,13 @@ export class AgentRenderer {
         for (const entry of toRemove) {
           this.scene.remove(entry.group);
           entry.bodyMat.dispose();
+          entry.headMat.dispose();
         }
         this.meshes = this.meshes.filter(e => e.agent.health > 0);
       }
     }
 
-    for (const { group, bodyMat, boatGroup, legs, agent } of this.meshes) {
+    for (const { group, bodyMat, boatGroup, instrumentGroup, agent } of this.meshes) {
       if (agent.health <= 0) {
         bodyMat.color.copy(DEAD_COLOR);
         bodyMat.emissive.set(0x000000);
@@ -204,9 +251,10 @@ export class AgentRenderer {
       // World position
       const tile = this.world.getTile(Math.floor(agent.x), Math.floor(agent.z));
       const surfY = tile ? TerrainRenderer.surfaceY(tile.type) : 0.14;
+      const liftY = agent.isDragged ? 1.2 : 0;
       group.position.set(
         agent.x * TILE_SIZE,
-        surfY + 0.30,
+        surfY + 0.30 + liftY,
         agent.z * TILE_SIZE,
       );
 
@@ -218,27 +266,30 @@ export class AgentRenderer {
       const hasSailing = agent.knowledge?.has('sailing') ?? false;
       boatGroup.visible = onWater && hasSailing;
 
-      // Body colour + emissive selection highlight
-      bodyMat.emissive.setHex(agent.selected ? 0x222244 : 0x000000);
+      // Body colour + discovery flash
+      if (agent.discoveryFlash > 0) {
+        bodyMat.color.copy(STATE_COLOR[AgentState.DISCOVERING]);
+        bodyMat.emissive.setHex(0x3a1a00);
+      } else {
+        bodyMat.color.copy(STATE_COLOR[agent.state] ?? STATE_COLOR[AgentState.WANDERING]);
+        bodyMat.emissive.setHex(agent.selected ? 0x222244 : 0x000000);
+      }
 
       if (agent.selected) ringTarget = group;
 
       // Juveniles are visibly smaller
       group.scale.setScalar(agent.isAdult ? 1.0 : 0.55);
 
-      // Leg walk animation — slow amble, stops when sleeping
-      const walking = agent.state !== AgentState.SLEEPING;
-      const t = Date.now() * 0.00038 + agent.id * 2.4;
-      const swing = walking ? 0.28 * Math.sin(t) : 0;
-      legs[0].rotation.x =  swing;       // front-left
-      legs[3].rotation.x =  swing;       // back-right  (same diagonal pair)
-      legs[1].rotation.x = -swing;       // front-right
-      legs[2].rotation.x = -swing;       // back-left   (opposite pair)
+      // Slight bob
+      group.position.y += Math.sin(Date.now() * 0.003 + agent.id * 1.3) * 0.04;
 
-      // Gentle body bob in sync with step
-      group.position.y += walking
-        ? Math.abs(Math.sin(t)) * 0.018   // lifts slightly on each stride
-        : Math.sin(Date.now() * 0.0004 + agent.id * 1.3) * 0.010; // slow sleeping sway
+      // Instrument: visible while performing, gentle strum sway
+      const performing = agent.state === AgentState.PERFORMING;
+      instrumentGroup.visible = performing;
+      if (performing) {
+        const strum = Math.sin(Date.now() * 0.005 + agent.id) * 0.18;
+        instrumentGroup.rotation.z = -0.4 + strum;
+      }
     }
 
     // Selection ring follows selected agent with a gentle pulse
@@ -255,8 +306,11 @@ export class AgentRenderer {
       this._ring.visible = false;
     }
 
-    // Speech bubbles: project 3D agent positions to screen space
-    if (camera) this._updateBubbles(camera);
+    // Speech bubbles + music notes: project 3D agent positions to screen space
+    if (camera) {
+      this._updateBubbles(camera);
+      this._updateMusicNotes(camera);
+    }
   }
 
   _updateBubbles(camera) {
@@ -320,9 +374,52 @@ export class AgentRenderer {
     });
   }
 
+  _updateMusicNotes(camera) {
+    const canvas = camera.userData._canvas ?? document.getElementById('world-canvas');
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    if (!this._bubblePos) this._bubblePos = new THREE.Vector3();
+    const _pos = this._bubblePos;
+    const now = performance.now();
+
+    for (const { group, agent } of this.meshes) {
+      if (agent.health <= 0 || agent.state !== AgentState.PERFORMING) {
+        this._noteTimers.delete(agent.id);
+        continue;
+      }
+
+      const camDist = group.position.distanceTo(camera.position);
+      if (camDist > 18) continue;
+
+      // Track per-agent note spawn timer (real milliseconds)
+      let nt = this._noteTimers.get(agent.id);
+      if (!nt) { nt = { next: now }; this._noteTimers.set(agent.id, nt); }
+      if (now < nt.next) continue;
+      nt.next = now + 700 + Math.random() * 500;
+
+      // Project position above head to screen
+      _pos.set(group.position.x, group.position.y + 0.9, group.position.z);
+      _pos.project(camera);
+      if (_pos.z > 1) continue;
+
+      const sx = ( _pos.x * 0.5 + 0.5) * w + (Math.random() - 0.5) * 14;
+      const sy = (-_pos.y * 0.5 + 0.5) * h;
+
+      const el = document.createElement('div');
+      el.className = 'music-note';
+      el.textContent = MUSIC_NOTES[Math.floor(Math.random() * MUSIC_NOTES.length)];
+      el.style.left = `${sx}px`;
+      el.style.top  = `${sy}px`;
+      this._notesContainer.appendChild(el);
+
+      // Remove after animation ends (~1.8s)
+      el.addEventListener('animationend', () => el.remove(), { once: true });
+    }
+  }
+
   /** Returns the agent whose mesh was hit by a raycast, or null */
   hitTest(raycaster) {
-    const allMeshes = this.meshes.map(m => m.group.children[0]);
+    const allMeshes = this.meshes.map(m => m.body);
     const hits = raycaster.intersectObjects(allMeshes, false);
     if (hits.length === 0) return null;
     const hitBody = hits[0].object;

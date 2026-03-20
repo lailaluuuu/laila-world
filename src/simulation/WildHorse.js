@@ -22,7 +22,7 @@ function horseTileOk(world, tx, tz) {
   const tile = world.getTile(tx, tz);
   if (!tile) return false;
   if (!world.isWalkable(tx, tz)) return false;
-  return tile.type === TileType.GRASS || tile.type === TileType.FOREST;
+  return tile.type === TileType.GRASS || tile.type === TileType.WOODLAND || tile.type === TileType.FOREST;
 }
 
 function rotateFacingToward(fx, fz, tx, tz, maxRad) {
@@ -64,6 +64,8 @@ export class WildHorse {
 
     /** Agent currently riding this horse, or null */
     this.rider = null;
+
+    this.isDragged = false;
   }
 
   _pickTarget(world, herd = []) {
@@ -114,6 +116,7 @@ export class WildHorse {
   }
 
   tick(delta, world, herd = []) {
+    if (this.isDragged) return;
     this._retargetIn -= delta;
     this._jumpCooldown = Math.max(0, this._jumpCooldown - delta);
 

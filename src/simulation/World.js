@@ -7,6 +7,7 @@ export const TileType = {
   WATER:    'WATER',
   BEACH:    'BEACH',
   GRASS:    'GRASS',
+  WOODLAND: 'WOODLAND',
   FOREST:   'FOREST',
   DESERT:   'DESERT',
   STONE:    'STONE',
@@ -20,6 +21,76 @@ export class World {
     this.seed = seed;
     this.tiles = this._generate();
     this.glacierData = this._initGlaciers();
+    /** "x,z" → { countdown: gameSeconds } for felled trees awaiting regrowth */
+    this.cutTrees = new Map();
+    /** "x,z" → { eggs: number, layTimer: gameSeconds } — populated by TerrainRenderer */
+    this.chickenNests = null;
+    /** Array of { x, z, milk, milkTimer } — populated by HighlandCowRenderer, positions updated each frame */
+    this.cows = [];
+  }
+
+  /**
+   * Mark a forest/woodland tile as felled. Returns true if the cut was registered.
+   * Regrowth takes 90–150 game-seconds (slow — trees are a long-term resource).
+   */
+  cutTree(x, z) {
+    const tile = this.getTile(x, z);
+    if (!tile) return false;
+    if (tile.type !== TileType.FOREST && tile.type !== TileType.WOODLAND) return false;
+    const key = `${tile.x},${tile.z}`;
+    if (this.cutTrees.has(key)) return false; // already felled
+    tile.treeCut = true;
+    this.cutTrees.set(key, { countdown: 90 + Math.random() * 60 });
+    return true;
+  }
+
+  /** Called once by TerrainRenderer after chickens are placed. */
+  initChickenNests(tiles) {
+    this.chickenNests = new Map();
+    for (const { x, z } of tiles) {
+      this.chickenNests.set(`${x},${z}`, {
+        eggs: 0,
+        layTimer: 10 + Math.random() * 20, // stagger initial lay times
+      });
+    }
+  }
+
+  /** Tick egg-laying timers. Each nest produces up to 3 eggs, one per ~20–35 game-sec. */
+  updateChickenNests(delta) {
+    if (!this.chickenNests) return;
+    for (const nest of this.chickenNests.values()) {
+      if (nest.eggs >= 3) continue;
+      nest.layTimer -= delta;
+      if (nest.layTimer <= 0) {
+        nest.eggs++;
+        nest.layTimer = 20 + Math.random() * 15;
+      }
+    }
+  }
+
+  /** Tick cow milk refill timers. Each cow refills ~0.5 milk every 30–60 game-sec. */
+  updateCows(delta) {
+    for (const cow of this.cows) {
+      if (cow.milk >= 1) continue;
+      cow.milkTimer -= delta;
+      if (cow.milkTimer <= 0) {
+        cow.milk = Math.min(1, cow.milk + 0.5);
+        cow.milkTimer = 30 + Math.random() * 30;
+      }
+    }
+  }
+
+  /** Tick regrowth countdowns. Call once per simulation step with game-time delta. */
+  updateCutTrees(delta) {
+    for (const [key, data] of this.cutTrees) {
+      data.countdown -= delta;
+      if (data.countdown <= 0) {
+        this.cutTrees.delete(key);
+        const [x, z] = key.split(',').map(Number);
+        const tile = this.getTile(x, z);
+        if (tile) tile.treeCut = false;
+      }
+    }
   }
 
   // ── Procedural generation ─────────────────────────────────────────────
@@ -49,13 +120,14 @@ export class World {
         if      (n < -0.22) type = TileType.WATER;
         else if (n < -0.08) type = TileType.BEACH;   // coastal strip
         else if (n <  0.18) type = TileType.GRASS;
+        else if (n <  0.30) type = TileType.WOODLAND;
         else if (n <  0.52) type = TileType.FOREST;
         else if (n <  0.72) type = TileType.STONE;
         else                type = TileType.MOUNTAIN;
 
         // Desert: arid heat patches within flat terrain
         // Uses a large-scale secondary noise (different frequency + seed phase)
-        if (type === TileType.GRASS || type === TileType.FOREST) {
+        if (type === TileType.GRASS || type === TileType.WOODLAND || type === TileType.FOREST) {
           const s = this.seed * 0.491;
           const arid = (
             Math.sin(x * 0.09 + s)        * Math.cos(z * 0.07 + s * 1.6) * 0.50 +
@@ -66,7 +138,7 @@ export class World {
         }
 
         const baseElev = {
-          WATER: 0.04, BEACH: 0.06, GRASS: 0.12, FOREST: 0.22,
+          WATER: 0.04, BEACH: 0.06, GRASS: 0.12, WOODLAND: 0.17, FOREST: 0.22,
           DESERT: 0.12, STONE: 0.32, MOUNTAIN: 1.5,
         }[type];
         const elev = baseElev + (Math.sin(x * 3.7 + z * 2.3 + this.seed) * 0.5 + 0.5) * 0.06;
@@ -91,7 +163,7 @@ export class World {
 
     // Third pass: guarantee at least one tile of each base terrain type.
     // Uses fixed fallback positions spread around the map so every world is playable.
-    const baseElevations = { WATER: 0.04, BEACH: 0.06, GRASS: 0.12, FOREST: 0.22, DESERT: 0.12, STONE: 0.32, MOUNTAIN: 1.5 };
+    const baseElevations = { WATER: 0.04, BEACH: 0.06, GRASS: 0.12, WOODLAND: 0.17, FOREST: 0.22, DESERT: 0.12, STONE: 0.32, MOUNTAIN: 1.5 };
     const present = new Set();
     for (let z = 0; z < this.height; z++)
       for (let x = 0; x < this.width; x++)
@@ -100,6 +172,7 @@ export class World {
     const forcePlacements = [
       { type: TileType.WATER,    x: 2,  z: 2  },
       { type: TileType.GRASS,    x: 14, z: 14 },
+      { type: TileType.WOODLAND, x: 16, z: 14 },
       { type: TileType.FOREST,   x: 17, z: 14 },
       { type: TileType.STONE,    x: 14, z: 17 },
       { type: TileType.MOUNTAIN, x: 29, z: 29 },
@@ -124,6 +197,9 @@ export class World {
     for (let z = 0; z < this.height; z++) {
       for (let x = 0; x < this.width; x++) {
         const tile = tiles[z][x];
+        if (tile.type === TileType.WOODLAND) {
+          if (this._rng(x, z, 301) < 0.30) tile.herbs = 1.0;
+        }
         if (tile.type === TileType.FOREST) {
           if (this._rng(x, z, 301) < 0.45) tile.herbs     = 1.0;
           if (this._rng(x, z, 303) < 0.30) tile.mushrooms = 1.0;
@@ -216,8 +292,9 @@ export class World {
     for (let z = 0; z < this.height; z++) {
       for (let x = 0; x < this.width; x++) {
         const tile = this.tiles[z][x];
-        if (tile.type === TileType.GRASS)  tile.resource = Math.min(1, tile.resource + 0.0020 * delta * mult);
-        if (tile.type === TileType.FOREST) tile.resource = Math.min(1, tile.resource + 0.0012 * delta * mult);
+        if (tile.type === TileType.GRASS)    tile.resource = Math.min(1, tile.resource + 0.0020 * delta * mult);
+        if (tile.type === TileType.WOODLAND) tile.resource = Math.min(1, tile.resource + 0.0016 * delta * mult);
+        if (tile.type === TileType.FOREST)   tile.resource = Math.min(1, tile.resource + 0.0012 * delta * mult);
         if (tile.herbs     !== undefined)  tile.herbs     = Math.min(1, tile.herbs     + 0.0006 * delta * mult);
         if (tile.mushrooms !== undefined)  tile.mushrooms = Math.min(1, tile.mushrooms + 0.0008 * delta * mult);
         // flint does not regenerate
@@ -248,7 +325,7 @@ export class World {
     for (let z = 0; z < this.height; z++) {
       for (let x = 0; x < this.width; x++) {
         const t = this.tiles[z][x].type;
-        if (t === TileType.GRASS || t === TileType.FOREST) {
+        if (t === TileType.GRASS || t === TileType.WOODLAND || t === TileType.FOREST) {
           candidates.push({ x: x + 0.5, z: z + 0.5 });
         }
       }
@@ -262,7 +339,7 @@ export class World {
 
   /** Estimated carrying capacity from food-producing tiles (GRASS + FOREST). No upper cap — apply max in main.js. */
   getCarryingCapacity() {
-    const foodTiles = this.getTilesOfType([TileType.GRASS, TileType.FOREST]).length;
+    const foodTiles = this.getTilesOfType([TileType.GRASS, TileType.WOODLAND, TileType.FOREST]).length;
     return Math.max(40, Math.floor(25 + foodTiles * 0.18));
   }
 

@@ -30,6 +30,9 @@ export class BeeRenderer {
     const wingGeom = new THREE.CircleGeometry(0.052, 5);
     this._geoms.push(wingGeom);
 
+    const eyeGeom = new THREE.SphereGeometry(0.010, 4, 3);
+    this._geoms.push(eyeGeom);
+
     const bodyMat = new THREE.MeshBasicMaterial({ color: BEE_BODY_COLOR });
     const wingMat = new THREE.MeshBasicMaterial({
       color: BEE_WING_COLOR,
@@ -38,7 +41,8 @@ export class BeeRenderer {
       side: THREE.DoubleSide,
       depthWrite: false,
     });
-    this._mats.push(bodyMat, wingMat);
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0a0a0a });
+    this._mats.push(bodyMat, wingMat, eyeMat);
 
     for (let s = 0; s < SWARM_COUNT; s++) {
       const p  = spawns[s] || { x: 16 + s * 24, z: 16 };
@@ -62,6 +66,13 @@ export class BeeRenderer {
         wR.position.set( 0.055, 0.012, 0);
         wR.scale.x = -1; // mirror
         root.add(wL, wR);
+
+        // Two tiny eyes at the front of the body (+Z is the bee's forward direction)
+        const eyeL = new THREE.Mesh(eyeGeom, eyeMat);
+        const eyeR = new THREE.Mesh(eyeGeom, eyeMat);
+        eyeL.position.set(-0.016, 0.013, 0.032);
+        eyeR.position.set( 0.016, 0.013, 0.032);
+        root.add(eyeL, eyeR);
 
         this._group.add(root);
 
@@ -87,6 +98,9 @@ export class BeeRenderer {
         cx: hx, cz: hz,
       });
     }
+
+    // Expose hive positions in tile-space so the simulation can find them
+    this.world.beeHives = this.swarms.map(sw => ({ x: sw.hx / TILE_SIZE, z: sw.hz / TILE_SIZE }));
   }
 
   update(delta, sunny) {

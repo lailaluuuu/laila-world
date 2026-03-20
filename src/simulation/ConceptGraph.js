@@ -30,7 +30,7 @@ export class ConceptGraph {
       if (agent.knowledge.has('curiosity_culture')) prob *= 1.2;
       if (agent.task === 'scout') prob *= 1.15;
       // Flint shard in pocket: greatly boosts stone_tools discovery
-      if (id === 'stone_tools' && agent._hasFlint) prob *= 8;
+      if (id === 'stone_tools' && agent.inventory?.includes('flint')) prob *= 8;
       // Fire: lightning-struck forest greatly boosts discovery
       if (id === 'fire' && world.naturalFires) {
         const key = `${tile.x},${tile.z}`;
@@ -40,9 +40,28 @@ export class ConceptGraph {
         );
         if (nearFire) prob *= 30;
       }
+      // Being near a cow greatly boosts dairy discovery
+      if (id === 'dairy' && world?.cows?.length > 0) {
+        const nearCow = world.cows.some(c => Math.hypot(c.x - agent.x, c.z - agent.z) < 4);
+        if (nearCow) prob *= 8;
+      }
+      // Seeing eggs near a chicken nest makes coop discovery much more likely
+      if (id === 'coop' && world?.chickenNests) {
+        const cx = Math.floor(agent.x);
+        const cz = Math.floor(agent.z);
+        const nearEggs = [...world.chickenNests.entries()].some(([key, nest]) => {
+          if (nest.eggs <= 0) return false;
+          const [nx, nz] = key.split(',').map(Number);
+          return Math.hypot(nx - cx, nz - cz) < 3;
+        });
+        if (nearEggs) prob *= 6;
+      }
       if (Math.random() < prob) {
         this._grant(agent, id);
-        if (id === 'stone_tools') agent._hasFlint = false;
+        if (id === 'stone_tools') {
+          const fi = agent.inventory?.indexOf('flint') ?? -1;
+          if (fi !== -1) agent.inventory.splice(fi, 1);
+        }
         this.events.push({ type: 'discovery', agentId: agent.id, agentName: agent.name, conceptId: id });
         return id;
       }
@@ -115,6 +134,11 @@ export class ConceptGraph {
       if (cond.type === 'has_concept' && !agent.knowledge.has(cond.value)) return false;
       if (cond.type === 'adjacent_to' && (!world || !world.hasAdjacentType(tile.x, tile.z, cond.value))) return false;
       if (cond.type === 'tile_has_resource' && !(tile[cond.value] > 0.1)) return false;
+      if (cond.type === 'near_bee_hive') {
+        const hives = world?.beeHives ?? [];
+        const radius = cond.value ?? 5;
+        if (!hives.some(h => Math.hypot(h.x - agent.x, h.z - agent.z) < radius)) return false;
+      }
       if (cond.type === 'population_nearby') {
         // Count live agents within 6 tiles
         const count = allAgents.filter(a =>

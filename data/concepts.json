@@ -301,11 +301,11 @@
     "era": 2,
     "icon": "🐕",
     "description": "Trust between people and beasts brings help in hunting, guarding, and carrying.",
-    "prerequisites": ["shelter", "language"],
+    "prerequisites": ["shelter"],
     "discovery_conditions": [
       { "type": "tile_type", "value": "GRASS" }
     ],
-    "discovery_probability": 0.0002,
+    "discovery_probability": 0.00038,
     "spread_rate": 0.04,
     "effects": {
       "gather_efficiency": 1.25
@@ -626,6 +626,39 @@
     }
   },
   {
+    "id": "woodcutting",
+    "name": "Woodcutting",
+    "era": 1,
+    "icon": "🪓",
+    "description": "Felling trees with stone tools yields timber for fires and shelters. The forest grows back, but slowly.",
+    "prerequisites": ["stone_tools"],
+    "discovery_conditions": [
+      { "type": "tile_type", "value": "FOREST" },
+      { "type": "has_concept", "value": "stone_tools" }
+    ],
+    "discovery_probability": 0.00042,
+    "spread_rate": 0.05,
+    "effects": {
+      "wood_gathering": true
+    }
+  },
+  {
+    "id": "honey_gathering",
+    "name": "Honey Gathering",
+    "era": 1,
+    "icon": "🍯",
+    "description": "Those bold enough to approach the wild bee hives discover sweet honey — a rich food that needs no fire to enjoy.",
+    "prerequisites": [],
+    "discovery_conditions": [
+      { "type": "near_bee_hive", "value": 5 }
+    ],
+    "discovery_probability": 0.0006,
+    "spread_rate": 0.05,
+    "effects": {
+      "honey_food": true
+    }
+  },
+  {
     "id": "herbalism",
     "name": "Herbalism",
     "era": 2,
@@ -641,6 +674,57 @@
     "effects": {
       "max_age_bonus": 0.10,
       "herb_healing_mult": 1.5
+    }
+  },
+  {
+    "id": "barn",
+    "name": "Barn",
+    "era": 2,
+    "icon": "🐄",
+    "description": "A sturdy roofed shelter keeps livestock warm and safe through storms and cold nights.",
+    "prerequisites": ["housing", "herding"],
+    "discovery_conditions": [
+      { "type": "tile_type", "value": "GRASS" },
+      { "type": "has_concept", "value": "herding" }
+    ],
+    "discovery_probability": 0.00022,
+    "spread_rate": 0.04,
+    "effects": {
+      "gather_efficiency": 1.1
+    }
+  },
+  {
+    "id": "dairy",
+    "name": "Dairy",
+    "era": 2,
+    "icon": "🥛",
+    "description": "Milking cattle provides a steady, renewable source of nourishment — richer than berries and available without the hunt.",
+    "prerequisites": ["herding", "animal_domestication"],
+    "discovery_conditions": [
+      { "type": "tile_type", "value": "GRASS" },
+      { "type": "has_concept", "value": "herding" }
+    ],
+    "discovery_probability": 0.00022,
+    "spread_rate": 0.04,
+    "effects": {
+      "gather_efficiency": 1.1
+    }
+  },
+  {
+    "id": "coop",
+    "name": "Chicken Coop",
+    "era": 2,
+    "icon": "🥚",
+    "description": "A small enclosed shelter keeps chickens safe at night. People with a coop know to collect eggs regularly — a steady, reliable food source.",
+    "prerequisites": ["housing", "animal_domestication"],
+    "discovery_conditions": [
+      { "type": "tile_type", "value": "GRASS" },
+      { "type": "has_concept", "value": "animal_domestication" }
+    ],
+    "discovery_probability": 0.00025,
+    "spread_rate": 0.04,
+    "effects": {
+      "hunger_efficiency": 1.08
     }
   }
 ]
