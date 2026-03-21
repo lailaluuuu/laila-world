@@ -6,10 +6,10 @@ const SEASON_WEIGHTS = {
 };
 
 export const WEATHER_META = {
-  CLEAR:  { label: '☀️ Clear',   energyMult: 1.00, sky: 0x5080a0, fog: 0.006 },
-  CLOUDY: { label: '☁️ Cloudy',  energyMult: 1.05, sky: 0x607080, fog: 0.009 },
-  RAIN:   { label: '🌧️ Rain',    energyMult: 1.30, sky: 0x4a5870, fog: 0.013 },
-  STORM:  { label: '⛈️ Storm',   energyMult: 1.70, sky: 0x28303e, fog: 0.022 },
+  CLEAR:  { label: '☀️ Clear',   energyMult: 1.00, sky: 0x5080a0, fog: 0.006, cloudOpacity: 0.00, cloudColor: 0xffffff,  cloudWind: 1.0 },
+  CLOUDY: { label: '☁️ Cloudy',  energyMult: 1.05, sky: 0x607080, fog: 0.009, cloudOpacity: 0.82, cloudColor: 0xd8e8f4,  cloudWind: 1.2 },
+  RAIN:   { label: '🌧️ Rain',    energyMult: 1.30, sky: 0x4a5870, fog: 0.013, cloudOpacity: 0.88, cloudColor: 0x8898aa,  cloudWind: 1.8 },
+  STORM:  { label: '⛈️ Storm',   energyMult: 1.70, sky: 0x28303e, fog: 0.022, cloudOpacity: 0.94, cloudColor: 0x3a4050,  cloudWind: 3.0 },
 };
 
 // Base temperature (°C) per season, modified by weather
