@@ -79,11 +79,112 @@ export class WorldRenderer {
     // ── Rainbow ────────────────────────────────────────────────────────
     this._buildRainbow();
 
+    // ── Sun disc ───────────────────────────────────────────────────────
+    this._buildSunDisc();
+
+    // ── Clouds ─────────────────────────────────────────────────────────
+    this._buildClouds();
+
+    // ── Aurora borealis ────────────────────────────────────────────────
+    this._buildAurora();
+
+    // ── Milky Way ──────────────────────────────────────────────────────
+    this._buildMilkyWay();
+
     // ── Stars / shooting star ──────────────────────────────────────────
     this._buildStars();
 
     // ── Resize ─────────────────────────────────────────────────────────
     window.addEventListener('resize', () => this._handleResize());
+  }
+
+  _buildSunDisc() {
+    const coreMat = new THREE.MeshBasicMaterial({ color: 0xfff5aa, transparent: true, opacity: 1, fog: false });
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xffdd44, transparent: true, opacity: 0.18, fog: false, depthWrite: false });
+    const core = new THREE.Mesh(new THREE.SphereGeometry(2.2, 16, 12), coreMat);
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(3.8, 16, 12), glowMat);
+    this._sunGroup = new THREE.Group();
+    this._sunGroup.add(core, glow);
+    this._sunGroup.visible = false;
+    this.scene.add(this._sunGroup);
+  }
+
+  _buildAurora() {
+    const COLORS  = [0x00ff77, 0x00ddbb, 0x44aaff, 0x9944ff, 0xff44bb, 0x00ff77, 0x22ddcc];
+    this._auroraCurtains = [];
+    const COUNT = 7;
+    for (let i = 0; i < COUNT; i++) {
+      const angle = (i / COUNT) * Math.PI * 2;
+      const R = 68;
+      const geom  = new THREE.PlaneGeometry(32, 24, 1, 12);
+      // Store base X positions for wave animation
+      geom.userData.baseX = Float32Array.from(
+        geom.attributes.position.array.filter((_, idx) => idx % 3 === 0),
+      );
+      const mat = new THREE.MeshBasicMaterial({
+        color: COLORS[i], transparent: true, opacity: 0,
+        depthWrite: false, side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.position.set(CENTER_X + R * Math.cos(angle), 50, CENTER_Z + R * Math.sin(angle));
+      mesh.lookAt(CENTER_X, 50, CENTER_Z);
+      mesh.userData.phase = Math.random() * Math.PI * 2;
+      mesh.userData.speed = 0.5 + Math.random() * 0.5;
+      this.scene.add(mesh);
+      this._auroraCurtains.push(mesh);
+    }
+    this._auroraState = { phase: 'hidden', opacity: 0, timer: 0, duration: 0 };
+  }
+
+  _buildClouds() {
+    this._cloudMat = new THREE.MeshLambertMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    this._cloudTargetOpacity = 0;
+    this._cloudTargetColor   = new THREE.Color(0xffffff);
+    this._cloudWindMult      = 1.0;
+
+    this._cloudGroup = new THREE.Group();
+    this._cloudList  = [];
+
+    const COUNT  = 22;
+    const SPREAD = 150;
+    for (let i = 0; i < COUNT; i++) {
+      const cloud = this._makeCloudMesh();
+      cloud.position.set(
+        CENTER_X + (Math.random() - 0.5) * SPREAD,
+        24 + Math.random() * 14,
+        CENTER_Z + (Math.random() - 0.5) * SPREAD,
+      );
+      const speed = 1.0 + Math.random() * 1.8;
+      const angle = (Math.random() - 0.5) * 0.5; // mostly along +X with slight Z drift
+      cloud.userData.baseVx = Math.cos(angle) * speed;
+      cloud.userData.baseVz = Math.sin(angle) * speed;
+      this._cloudGroup.add(cloud);
+      this._cloudList.push(cloud);
+    }
+    this.scene.add(this._cloudGroup);
+  }
+
+  _makeCloudMesh() {
+    const group  = new THREE.Group();
+    const puffs  = 4 + Math.floor(Math.random() * 4);
+    const scaleX = 0.8 + Math.random() * 0.8;
+    const scaleZ = 0.6 + Math.random() * 0.6;
+    for (let i = 0; i < puffs; i++) {
+      const r    = 2.2 + Math.random() * 3.2;
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), this._cloudMat);
+      mesh.position.set(
+        i === 0 ? 0 : (Math.random() - 0.5) * 11 * scaleX,
+        (Math.random() - 0.5) * 2.5,
+        (Math.random() - 0.5) * 6  * scaleZ,
+      );
+      group.add(mesh);
+    }
+    return group;
   }
 
   _buildRain() {
@@ -131,6 +232,45 @@ export class WorldRenderer {
     this.scene.add(group);
     this._rainbowGroup = group;
     this._rainbowState = { phase: 'hidden', opacity: 0, timer: 0, duration: 0 };
+  }
+
+  _buildMilkyWay() {
+    const COUNT = 3200;
+    const R     = 175;
+    const pos   = new Float32Array(COUNT * 3);
+
+    // Band plane: pole tilted ~30° off vertical, angled diagonally across the sky
+    const pole = new THREE.Vector3(0.45, 0.82, 0.36).normalize();
+    const ref  = Math.abs(pole.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+    const u    = new THREE.Vector3().crossVectors(pole, ref).normalize();
+    const v    = new THREE.Vector3().crossVectors(pole, u).normalize();
+
+    for (let i = 0; i < COUNT; i++) {
+      const theta  = Math.random() * Math.PI * 2;
+      // Two gaussians summed for a natural bell-curve spread across the band width
+      const spread = (Math.random() + Math.random() + Math.random() - 1.5) * 0.28;
+      const x = Math.cos(theta) * u.x + Math.sin(theta) * v.x + spread * pole.x;
+      const y = Math.cos(theta) * u.y + Math.sin(theta) * v.y + spread * pole.y;
+      const z = Math.cos(theta) * u.z + Math.sin(theta) * v.z + spread * pole.z;
+      const len = Math.sqrt(x * x + y * y + z * z);
+      pos[i * 3]     = CENTER_X + R * x / len;
+      pos[i * 3 + 1] = R * y / len;
+      pos[i * 3 + 2] = CENTER_Z + R * z / len;
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this._milkyWayMat = new THREE.PointsMaterial({
+      color: 0xb8d0ff,
+      size: 0.9,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      fog: false,
+      sizeAttenuation: false,
+    });
+    this._milkyWay = new THREE.Points(geom, this._milkyWayMat);
+    this.scene.add(this._milkyWay);
   }
 
   _buildStars() {
@@ -307,6 +447,9 @@ export class WorldRenderer {
     this._targetSky.setHex(meta.sky);
     this._targetFog = meta.fog;
     this._weatherSunMult = meta.energyMult > 1.2 ? 0.6 : 1.0;
+    this._cloudTargetOpacity = meta.cloudOpacity ?? 0;
+    this._cloudTargetColor.setHex(meta.cloudColor ?? 0xffffff);
+    this._cloudWindMult = meta.cloudWind ?? 1.0;
   }
 
   /** Add a persistent fire (light + visible mesh). Call removeFireLight when fire ends. */
@@ -398,12 +541,11 @@ export class WorldRenderer {
 
     // Day–night cycle: sun orbit and sky tint
     const t = this._timeOfDay;
-    const elev = (t - 0.25) * Math.PI * 2;
-    const azim = (t - 0.25) * Math.PI * 2;
-    const R = 70;
-    const sunX = CENTER_X + R * Math.cos(elev) * Math.cos(azim);
-    const sunY = R * Math.sin(elev);
-    const sunZ = CENTER_Z + R * Math.cos(elev) * Math.sin(azim);
+    const arc  = (t - 0.25) * Math.PI * 2; // 0=dawn, π/2=noon, π=dusk
+    const R = 28;
+    const sunX = CENTER_X + R * Math.cos(arc); // rises west (+X), sets east (-X)
+    const sunY = R * Math.sin(arc);
+    const sunZ = CENTER_Z;
     this.sun.position.set(sunX, sunY, sunZ);
     const baseIntensity = sunY > 0 ? Math.min(2, 0.3 + sunY / 40) : 0.02;
     this.sun.intensity = baseIntensity * (this._weatherSunMult ?? 1);
@@ -431,8 +573,73 @@ export class WorldRenderer {
       this._starMat.opacity = 0;
     }
 
+    // Milky Way: fades in on clear dark nights, hidden behind clouds
+    const mwBase  = nightness > 0.55 ? Math.min(1, (nightness - 0.55) / 0.35) : 0;
+    const mwCloud = Math.max(0, 1 - this._cloudMat.opacity * 2);
+    this._milkyWayMat.opacity = mwBase * mwCloud * 0.45;
+
     // Shooting star
     this._updateShootingStar(_now, _dt, nightness);
+
+    // Sun disc: follow DirectionalLight position, fade at horizon
+    const sunVis = Math.max(0, Math.min(1, sunY / 8));
+    this._sunGroup.visible = sunVis > 0.01;
+    if (this._sunGroup.visible) {
+      this._sunGroup.position.set(sunX, sunY, sunZ);
+      this._sunGroup.children[0].material.opacity = sunVis;
+      this._sunGroup.children[1].material.opacity = 0.18 * sunVis;
+    }
+
+    // Northern lights (aurora borealis)
+    const aurora = this._auroraState;
+    if (nightness > 0.75 && aurora.phase === 'hidden' && Math.random() < _dt / 45) {
+      aurora.phase    = 'fadein';
+      aurora.opacity  = 0;
+      aurora.timer    = 0;
+      aurora.duration = 20 + Math.random() * 50;
+    }
+    if (aurora.phase !== 'hidden') {
+      aurora.timer += _dt;
+      if (aurora.phase === 'fadein') {
+        aurora.opacity = Math.min(0.52, aurora.opacity + _dt / 6);
+        if (aurora.opacity >= 0.52) aurora.phase = 'visible';
+      } else if (aurora.phase === 'visible') {
+        if (aurora.timer >= aurora.duration || nightness < 0.5) aurora.phase = 'fadeout';
+      } else if (aurora.phase === 'fadeout') {
+        aurora.opacity = Math.max(0, aurora.opacity - _dt / 8);
+        if (aurora.opacity <= 0) aurora.phase = 'hidden';
+      }
+      // Cloud cover dims the aurora
+      const auroraVis = aurora.opacity * (1 - this._cloudMat.opacity * 0.7);
+      for (const curtain of this._auroraCurtains) {
+        curtain.material.opacity = auroraVis;
+        // Ripple wave along the curtain height
+        const baseX = curtain.geometry.userData.baseX;
+        const pos   = curtain.geometry.attributes.position.array;
+        let bxi = 0;
+        for (let vi = 0; vi < pos.length / 3; vi++) {
+          const localY = pos[vi * 3 + 1];
+          pos[vi * 3] = baseX[bxi++] + Math.sin(_now * curtain.userData.speed + localY * 0.22 + curtain.userData.phase) * 3.5;
+        }
+        curtain.geometry.attributes.position.needsUpdate = true;
+      }
+    } else {
+      for (const curtain of this._auroraCurtains) curtain.material.opacity = 0;
+    }
+
+    // Clouds: drift across sky, lerp opacity/colour toward weather targets
+    const HALF_SPREAD = 80;
+    const lerpRate    = Math.min(1, _dt * 0.4);
+    this._cloudMat.opacity = this._cloudMat.opacity + (this._cloudTargetOpacity - this._cloudMat.opacity) * lerpRate;
+    this._cloudMat.color.lerp(this._cloudTargetColor, lerpRate);
+    for (const cloud of this._cloudList) {
+      cloud.position.x += cloud.userData.baseVx * this._cloudWindMult * _dt;
+      cloud.position.z += cloud.userData.baseVz * this._cloudWindMult * _dt;
+      if (cloud.position.x > CENTER_X + HALF_SPREAD) cloud.position.x -= HALF_SPREAD * 2;
+      if (cloud.position.x < CENTER_X - HALF_SPREAD) cloud.position.x += HALF_SPREAD * 2;
+      if (cloud.position.z > CENTER_Z + HALF_SPREAD) cloud.position.z -= HALF_SPREAD * 2;
+      if (cloud.position.z < CENTER_Z - HALF_SPREAD) cloud.position.z += HALF_SPREAD * 2;
+    }
 
     this.renderer.render(this.scene, this.camera);
   }
