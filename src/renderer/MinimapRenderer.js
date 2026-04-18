@@ -13,8 +13,11 @@ const TILE_COLOURS = {
   [TileType.FOREST]:     '#1a4a1a',
   [TileType.DESERT]:     '#c8a84b',
   [TileType.STONE]:      '#7a7a7a',
-  [TileType.MOUNTAIN]:   '#4a4a4a',
+  [TileType.MOUNTAIN]:   '#5a5060',
 };
+
+// Max elevation in the world (mountain peaks reach ~1.5)
+const MAX_ELEV = 1.5;
 
 export class MinimapRenderer {
   constructor(world, size = 160) {
@@ -54,8 +57,48 @@ export class MinimapRenderer {
       for (let x = 0; x < width; x++) {
         const tile = tiles[z][x];
         if (!tile) continue;
+
+        const px = x * cellW, pz = z * cellH;
+        const pw = Math.ceil(cellW), ph = Math.ceil(cellH);
+        const elev  = tile.elevation ?? 0;
+        const layer = tile.layer ?? 0;
+
+        // Base terrain colour
         ctx.fillStyle = TILE_COLOURS[tile.type] ?? '#444';
-        ctx.fillRect(x * cellW, z * cellH, Math.ceil(cellW), Math.ceil(cellH));
+        ctx.fillRect(px, pz, pw, ph);
+
+        // Elevation shading: brighter white overlay for higher ground
+        // Layer-1 raised platforms get an extra strong boost so they pop
+        const elevNorm = Math.min(elev / MAX_ELEV, 1);
+        const brightness = layer === 1
+          ? 0.30 + elevNorm * 0.25   // raised platforms: noticeably lighter
+          : elevNorm * 0.40;          // hills/mountains: shaded by height
+        if (brightness > 0.02) {
+          ctx.fillStyle = `rgba(255,255,255,${brightness.toFixed(2)})`;
+          ctx.fillRect(px, pz, pw, ph);
+        }
+
+        // Snow cap: mountains above ~80% of max elevation get a pale blue-white tint
+        if (tile.type === TileType.MOUNTAIN && elevNorm > 0.75) {
+          const snowAlpha = ((elevNorm - 0.75) / 0.25) * 0.45;
+          ctx.fillStyle = `rgba(220,230,255,${snowAlpha.toFixed(2)})`;
+          ctx.fillRect(px, pz, pw, ph);
+        }
+
+        // Hillshading: simulate NW light source using elevation difference to NW neighbour
+        const nw = tiles[z - 1]?.[x - 1];
+        if (nw) {
+          const slope = (elev - (nw.elevation ?? 0)) * 3.5;
+          if (slope > 0.01) {
+            // facing the light — brighten
+            ctx.fillStyle = `rgba(255,255,255,${Math.min(slope, 0.35).toFixed(2)})`;
+            ctx.fillRect(px, pz, pw, ph);
+          } else if (slope < -0.01) {
+            // in shadow — darken
+            ctx.fillStyle = `rgba(0,0,0,${Math.min(-slope, 0.30).toFixed(2)})`;
+            ctx.fillRect(px, pz, pw, ph);
+          }
+        }
       }
     }
     this._terrainCache = ctx.getImageData(0, 0, this.size, this.size);

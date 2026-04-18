@@ -5,12 +5,14 @@ import { TerrainRenderer } from './TerrainRenderer.js';
 
 // State body colours
 const STATE_COLOR = {
-  [AgentState.WANDERING]:   new THREE.Color(0x94a3b8),
-  [AgentState.GATHERING]:   new THREE.Color(0xfbbf24),
-  [AgentState.SLEEPING]:    new THREE.Color(0x4c6ef5),
-  [AgentState.SOCIALIZING]: new THREE.Color(0xa78bfa),
-  [AgentState.DISCOVERING]: new THREE.Color(0xfb923c),
-  [AgentState.PERFORMING]:  new THREE.Color(0xf472b6),
+  [AgentState.WANDERING]:    new THREE.Color(0x94a3b8),
+  [AgentState.GATHERING]:    new THREE.Color(0xfbbf24),
+  [AgentState.SLEEPING]:     new THREE.Color(0x4c6ef5),
+  [AgentState.SOCIALIZING]:  new THREE.Color(0xa78bfa),
+  [AgentState.DISCOVERING]:  new THREE.Color(0xfb923c),
+  [AgentState.PERFORMING]:   new THREE.Color(0xf472b6),
+  [AgentState.BUILD_LADDER]: new THREE.Color(0xa16207), // earthy amber — working with wood
+  [AgentState.BUILD_BRIDGE]: new THREE.Color(0x0369a1), // slate blue — working at the water's edge
 };
 
 const MUSIC_NOTES = ['♪', '♫', '𝅗𝅥', '♩', '🎵'];
@@ -248,9 +250,9 @@ export class AgentRenderer {
         continue;
       }
 
-      // World position
+      // World position — pass tile object so elevated platforms are handled correctly
       const tile = this.world.getTile(Math.floor(agent.x), Math.floor(agent.z));
-      const surfY = tile ? TerrainRenderer.surfaceY(tile.type) : 0.14;
+      const surfY = tile ? TerrainRenderer.surfaceY(tile) : 0.14;
       const liftY = agent.isDragged ? 1.2 : 0;
       group.position.set(
         agent.x * TILE_SIZE,

@@ -152,7 +152,7 @@ export class TerrainRenderer {
 
     this._buildVegetation(buckets);
     this._buildAnimals(buckets);
-    this._buildGlaciers(buckets[TileType.STONE]);
+    this._buildGlaciers(buckets[TileType.STONE], buckets[TileType.MOUNTAIN]);
     this._buildWaterSurface(buckets[TileType.WATER], buckets[TileType.DEEP_WATER]);
     this._buildTumbleweeds(buckets[TileType.DESERT]);
     this._buildCliffWalls();
@@ -793,6 +793,51 @@ export class TerrainRenderer {
       rockMesh.instanceMatrix.needsUpdate = true;
       this.scene.add(rockMesh);
       this._meshes.push(rockMesh);
+    }
+
+    // ── Trees on elevated STONE hills (layer=1 platforms) ────────────────
+    // ~28% of raised tiles get a tree or two — sparse windswept conifers
+    const hillTreeTiles = buckets[TileType.STONE]
+      .filter(t => (t.layer ?? 0) === 1 && this._rng(t.x, t.z, 500) < 0.28);
+    if (hillTreeTiles.length > 0) {
+      const hEntries = [];
+      hillTreeTiles.forEach(tile => {
+        const count = 1 + (this._rng(tile.x, tile.z, 501) < 0.40 ? 1 : 0);
+        for (let ti = 0; ti < count; ti++) hEntries.push({ tile, ti });
+      });
+
+      // Windswept conifer: narrow trunk, compact pointed crown
+      const hTrunkGeom  = new THREE.CylinderGeometry(0.05, 0.08, 0.32, 5);
+      const hCanopyGeom = new THREE.ConeGeometry(0.22, 0.50, 7);
+      const hTrunkMat   = new THREE.MeshLambertMaterial({ color: 0x5c3210 });
+      const hCanopyMat  = new THREE.MeshLambertMaterial({ color: 0x2a5c30 });
+      const hTMesh = new THREE.InstancedMesh(hTrunkGeom,  hTrunkMat,  hEntries.length);
+      const hFMesh = new THREE.InstancedMesh(hCanopyGeom, hCanopyMat, hEntries.length);
+      const hDummy = new THREE.Object3D();
+      hEntries.forEach(({ tile, ti }, i) => {
+        const ox = (this._rng(tile.x + ti * 9, tile.z,         502) - 0.5) * 1.2;
+        const oz = (this._rng(tile.x,           tile.z + ti * 9, 503) - 0.5) * 1.2;
+        const cx = tile.x * TILE_SIZE + TILE_SIZE / 2 + ox;
+        const cz = tile.z * TILE_SIZE + TILE_SIZE / 2 + oz;
+        const sc = 0.70 + this._rng(tile.x + ti, tile.z, 504) * 0.40;
+        const surfY = TerrainRenderer.surfaceY(tile);
+        // slight lean — windswept feel
+        const leanX = (this._rng(tile.x, tile.z + ti, 505) - 0.5) * 0.18;
+        const leanZ = (this._rng(tile.x + ti, tile.z, 506) - 0.5) * 0.18;
+        hDummy.rotation.set(leanX, this._rng(tile.x + ti, tile.z, 507) * Math.PI * 2, leanZ);
+        hDummy.position.set(cx, surfY + 0.16 * sc, cz);
+        hDummy.scale.setScalar(sc);
+        hDummy.updateMatrix();
+        hTMesh.setMatrixAt(i, hDummy.matrix);
+        hDummy.position.set(cx, surfY + 0.52 * sc, cz);
+        hDummy.updateMatrix();
+        hFMesh.setMatrixAt(i, hDummy.matrix);
+      });
+      hTMesh.castShadow = hFMesh.castShadow = true;
+      hFMesh.receiveShadow = true;
+      hTMesh.instanceMatrix.needsUpdate = hFMesh.instanceMatrix.needsUpdate = true;
+      this.scene.add(hTMesh, hFMesh);
+      this._meshes.push(hTMesh, hFMesh);
     }
 
     // ── Beach pebbles & shells on BEACH tiles ────────────────────────────
@@ -3060,7 +3105,7 @@ export class TerrainRenderer {
     return best;
   }
 
-  _buildGlaciers(stoneTiles) {
+  _buildGlaciers(stoneTiles, mountainTiles = []) {
     // Glacier tiles = STONE tiles adjacent to at least one MOUNTAIN tile
     const glacierTiles = stoneTiles.filter(t =>
       [-1, 0, 1].some(dz => [-1, 0, 1].some(dx => {
@@ -3070,7 +3115,7 @@ export class TerrainRenderer {
         return this.world.tiles[nz][nx].type === TileType.MOUNTAIN;
       }))
     );
-    if (!glacierTiles.length) return;
+    if (!glacierTiles.length && !mountainTiles.length) return;
 
     const surfY = TerrainRenderer.surfaceY(TileType.STONE);
     const dummy = new THREE.Object3D();
@@ -3132,6 +3177,46 @@ export class TerrainRenderer {
       this._meshes.push(spikeMesh);
       this._glacierSpikeMesh = spikeMesh;
       this._glacierSpikeTiles = spikeTiles;
+    }
+
+    // ── Ice caps on MOUNTAIN peaks ────────────────────────────────────────
+    if (mountainTiles.length) {
+      const baseH = TILE_HEIGHT[TileType.MOUNTAIN]; // 1.5
+      const capDummy = new THREE.Object3D();
+
+      // Outer cap: a squashed cone covering the top ~30% of each mountain
+      const capGeom = new THREE.ConeGeometry(1.0, 1.0, 8);
+      const capMat  = new THREE.MeshStandardMaterial({
+        color: 0xd4eeff, roughness: 0.08, metalness: 0.12,
+        transparent: true, opacity: 0.90,
+      });
+      const capMesh = new THREE.InstancedMesh(capGeom, capMat, mountainTiles.length);
+
+      mountainTiles.forEach((tile, i) => {
+        const hVariation = baseH + tile.elevation * 0.08;
+        const widthVar   = 0.85 + this._rng(tile.x, tile.z, 14) * 0.25; // same seed as cone
+        const capFrac    = 0.32; // cover top 32% of the mountain
+        const capH       = hVariation * capFrac;
+        // Cone radius at (1 - capFrac) of the way up = widthVar * 0.92 * capFrac
+        const capR       = widthVar * 0.92 * capFrac;
+        const peakY      = hVariation;
+        // Position cap centred at the upper segment, slightly lower than the tip
+        capDummy.position.set(
+          tile.x * TILE_SIZE + TILE_SIZE / 2,
+          peakY - capH * 0.55,
+          tile.z * TILE_SIZE + TILE_SIZE / 2,
+        );
+        capDummy.scale.set(capR, capH, capR);
+        capDummy.rotation.set(0, this._rng(tile.x, tile.z, 19) * 0.08, 0);
+        capDummy.updateMatrix();
+        capMesh.setMatrixAt(i, capDummy.matrix);
+      });
+      capMesh.instanceMatrix.needsUpdate = true;
+      capMesh.castShadow = true;
+      this.scene.add(capMesh);
+      this._meshes.push(capMesh);
+      this._mountainCapMesh  = capMesh;
+      this._mountainCapTiles = mountainTiles;
     }
   }
 
@@ -3274,6 +3359,36 @@ export class TerrainRenderer {
       });
       this._glacierSpikeMesh.instanceMatrix.needsUpdate = true;
       this._glacierSpikeMesh.material.opacity = Math.max(0.08, 0.80 - avgMelt * 0.55);
+    }
+
+    // Mountain ice caps: shrink and fade as they melt
+    if (this._mountainCapMesh && this._mountainCapTiles) {
+      const baseH = TILE_HEIGHT[TileType.MOUNTAIN];
+      const capDummy = new THREE.Object3D();
+      let totalMelt = 0, count = 0;
+      this._mountainCapTiles.forEach((tile, i) => {
+        const g = glacierData.get(`${tile.x},${tile.z}`);
+        const m = g ? g.melt : 0;
+        totalMelt += m; count++;
+        const hVariation = baseH + tile.elevation * 0.08;
+        const widthVar   = 0.85 + this._rng(tile.x, tile.z, 14) * 0.25;
+        const capFrac    = 0.32;
+        const capH       = hVariation * capFrac * Math.max(0.04, 1 - m * 0.94);
+        const capR       = widthVar * 0.92 * capFrac * Math.max(0.06, 1 - m * 0.72);
+        const peakY      = hVariation;
+        capDummy.position.set(
+          tile.x * TILE_SIZE + TILE_SIZE / 2,
+          peakY - capH * 0.55,
+          tile.z * TILE_SIZE + TILE_SIZE / 2,
+        );
+        capDummy.scale.set(capR, capH, capR);
+        capDummy.rotation.set(0, this._rng(tile.x, tile.z, 19) * 0.08, 0);
+        capDummy.updateMatrix();
+        this._mountainCapMesh.setMatrixAt(i, capDummy.matrix);
+      });
+      this._mountainCapMesh.instanceMatrix.needsUpdate = true;
+      const avgCapMelt = count ? totalMelt / count : 0;
+      this._mountainCapMesh.material.opacity = Math.max(0.10, 0.90 - avgCapMelt * 0.65);
     }
   }
 

@@ -20,7 +20,12 @@ export class World {
     this.height = WORLD_HEIGHT;
     this.seed = seed;
     this.tiles = this._generate();
+    this._generateElevatedPlatforms();
     this.glacierData = this._initGlaciers();
+    /** Array of {fromX, fromZ, toX, toZ} — tile pairs connected by a ladder */
+    this.ladders = [];
+    /** Array of {x, z} — water tiles that have been bridged and are now passable on foot */
+    this.bridges = [];
     /** "x,z" → { countdown: gameSeconds } for felled trees awaiting regrowth */
     this.cutTrees = new Map();
     /** "x,z" → { eggs: number, layTimer: gameSeconds } — populated by TerrainRenderer */
@@ -273,14 +278,100 @@ export class World {
     return tiles;
   }
 
+  // ── Elevated Platforms ────────────────────────────────────────────────
+
+  /**
+   * Picks 6–9 clusters of STONE tiles and marks them as layer=1 (elevated).
+   * Each cluster is 6–20 connected tiles, placed away from map edges and mountains.
+   * Called once after _generate() completes.
+   */
+  _generateElevatedPlatforms() {
+    const PLATFORM_COUNT = 6 + Math.floor(this._rng(this.seed % 64, 7, 200) * 4); // 6–9
+    const MIN_SIZE = 6;
+    const MAX_SIZE = 20;
+    const EDGE_MARGIN = 4;
+
+    // Collect candidate STONE tiles far from edges and mountains
+    const candidates = [];
+    for (let z = EDGE_MARGIN; z < this.height - EDGE_MARGIN; z++) {
+      for (let x = EDGE_MARGIN; x < this.width - EDGE_MARGIN; x++) {
+        const tile = this.tiles[z][x];
+        if (tile.type !== TileType.STONE) continue;
+        // Skip tiles adjacent to mountains (mountains already read as tall)
+        const nearMtn = [-1, 0, 1].some(dz =>
+          [-1, 0, 1].some(dx => {
+            if (dx === 0 && dz === 0) return false;
+            const t = this.getTile(x + dx, z + dz);
+            return t && t.type === TileType.MOUNTAIN;
+          })
+        );
+        if (!nearMtn) candidates.push({ x, z });
+      }
+    }
+
+    /** Cache of elevated edge pairs, populated at end of this method */
+    this._elevatedEdgesCache = null;
+
+    if (candidates.length === 0) return;
+
+    const used = new Set(); // "x,z" keys already assigned to a platform
+    let placed = 0;
+
+    // Shuffle candidates deterministically with seed-based sort
+    candidates.sort((a, b) => this._rng(a.x, a.z, 555) - this._rng(b.x, b.z, 555));
+
+    for (const seed of candidates) {
+      if (placed >= PLATFORM_COUNT) break;
+      const key = `${seed.x},${seed.z}`;
+      if (used.has(key)) continue;
+
+      // BFS flood-fill from seed, collecting connected STONE tiles not yet used
+      const cluster = [];
+      const queue = [seed];
+      const visited = new Set([key]);
+
+      while (queue.length > 0 && cluster.length < MAX_SIZE) {
+        const { x, z } = queue.shift();
+        cluster.push({ x, z });
+        for (const [dx, dz] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          const nx = x + dx, nz = z + dz;
+          const nk = `${nx},${nz}`;
+          if (visited.has(nk) || used.has(nk)) continue;
+          const t = this.getTile(nx, nz);
+          if (!t || t.type !== TileType.STONE) continue;
+          visited.add(nk);
+          queue.push({ x: nx, z: nz });
+        }
+      }
+
+      if (cluster.length < MIN_SIZE) continue;
+
+      // Mark cluster tiles as elevated
+      for (const { x, z } of cluster) {
+        this.tiles[z][x].layer = 1;
+        used.add(`${x},${z}`);
+      }
+      placed++;
+    }
+
+    // Pre-compute the edge cache so agents don't scan the full map each tick
+    this._elevatedEdgesCache = null; // force rebuild on first call
+  }
+
   // ── Glaciers ──────────────────────────────────────────────────────────
 
   _initGlaciers() {
     const data = new Map();
     for (let z = 0; z < this.height; z++) {
       for (let x = 0; x < this.width; x++) {
-        if (this.tiles[z][x].type !== TileType.STONE) continue;
-        // Glacier if any 8-directional neighbor is MOUNTAIN (cold high-elevation zone)
+        const tile = this.tiles[z][x];
+        // Mountain peaks always have ice caps
+        if (tile.type === TileType.MOUNTAIN) {
+          data.set(`${x},${z}`, { x, z, melt: 0 });
+          continue;
+        }
+        // Stone tiles adjacent to a mountain carry ground glaciers
+        if (tile.type !== TileType.STONE) continue;
         const nearMountain = [-1, 0, 1].some(dz =>
           [-1, 0, 1].some(dx => {
             if (dx === 0 && dz === 0) return false;
@@ -312,24 +403,119 @@ export class World {
     return this.tiles[tz][tx];
   }
 
-  /** Base walkability: used for spawning/birth. Blocks water and mountains regardless of knowledge. */
+  /** Base walkability: used for spawning/birth. Blocks water, mountains, and elevated tiles (layer=1). */
   isWalkable(x, z) {
     const tile = this.getTile(x, z);
-    return tile !== null && tile.type !== TileType.WATER && tile.type !== TileType.DEEP_WATER && tile.type !== TileType.MOUNTAIN;
+    if (!tile) return false;
+    if (tile.type === TileType.WATER || tile.type === TileType.DEEP_WATER) return false;
+    if (tile.type === TileType.MOUNTAIN) return false;
+    if ((tile.layer ?? 0) === 1) return false; // elevated — only reachable via ladder
+    return true;
   }
 
   /**
    * Knowledge-aware traversal check used by agent movement.
    * Sailing unlocks water, mountain_climbing unlocks mountains.
+   * fromX/fromZ: current agent tile (optional). When provided, layer transitions
+   * are only allowed if a ladder exists between the two tiles.
    */
-  canTraverse(x, z, knowledge) {
+  canTraverse(x, z, knowledge, fromX = null, fromZ = null) {
     const tile = this.getTile(x, z);
     if (!tile) return false;
-    if (tile.type === TileType.WATER || tile.type === TileType.DEEP_WATER) return knowledge.has('sailing');
+    if (tile.type === TileType.WATER || tile.type === TileType.DEEP_WATER) return knowledge.has('sailing') || this.hasBridgeAt(x, z);
     if (tile.type === TileType.MOUNTAIN) return knowledge.has('mountain_climbing');
     // Flood disaster: beach tiles become submerged and impassable
     if (tile.type === TileType.BEACH && this.isBeachFlooded) return knowledge.has('sailing');
+    // Layer transition: need a ladder to move between ground and elevated tiles
+    if (fromX !== null && fromZ !== null) {
+      const fromTile = this.getTile(fromX, fromZ);
+      if (fromTile && (fromTile.layer ?? 0) !== (tile.layer ?? 0)) {
+        return this.hasLadderBetween(fromX, fromZ, x, z);
+      }
+    }
     return true;
+  }
+
+  /** True if a ladder exists between the two given tile coordinates (bidirectional). */
+  hasLadderBetween(fromX, fromZ, toX, toZ) {
+    return this.ladders.some(l =>
+      (l.fromX === fromX && l.fromZ === fromZ && l.toX === toX && l.toZ === toZ) ||
+      (l.fromX === toX   && l.fromZ === toZ   && l.toX === fromX && l.toZ === fromZ)
+    );
+  }
+
+  /** Place a new ladder between two adjacent tiles of different layers. No-op if already exists. */
+  addLadder(fromX, fromZ, toX, toZ) {
+    if (this.hasLadderBetween(fromX, fromZ, toX, toZ)) return false;
+    this.ladders.push({ fromX, fromZ, toX, toZ });
+    return true;
+  }
+
+  /** True if the given water tile has a bridge on it. */
+  hasBridgeAt(x, z) {
+    return this.bridges.some(b => b.x === x && b.z === z);
+  }
+
+  /** Place a bridge on a water tile, making it passable on foot. No-op if already bridged. */
+  addBridge(x, z) {
+    if (this.hasBridgeAt(x, z)) return false;
+    this.bridges.push({ x, z });
+    return true;
+  }
+
+  /**
+   * Returns water tiles that make good bridge crossing points — water adjacent to land on
+   * at least two opposite sides (N/S or E/W), forming a narrow strait.
+   * Each entry: { waterX, waterZ, landX, landZ } where landX/landZ is the approach tile.
+   */
+  getBridgableWaterEdges() {
+    if (this._bridgableEdgesCache) return this._bridgableEdgesCache;
+    const result = [];
+    for (let z = 0; z < this.height; z++) {
+      for (let x = 0; x < this.width; x++) {
+        const tile = this.tiles[z][x];
+        if (tile.type !== TileType.WATER) continue;
+        if (this.hasBridgeAt(x, z)) continue;
+        const N = this.getTile(x, z - 1), S = this.getTile(x, z + 1);
+        const W = this.getTile(x - 1, z), E = this.getTile(x + 1, z);
+        const isLand = t => t && t.type !== TileType.WATER && t.type !== TileType.DEEP_WATER && t.type !== TileType.MOUNTAIN;
+        const hasNS = isLand(N) && isLand(S);
+        const hasEW = isLand(W) && isLand(E);
+        if (hasNS) {
+          result.push({ waterX: x, waterZ: z, landX: x, landZ: z - 1 });
+        } else if (hasEW) {
+          result.push({ waterX: x, waterZ: z, landX: x - 1, landZ: z });
+        }
+      }
+    }
+    this._bridgableEdgesCache = result;
+    return result;
+  }
+
+  /**
+   * Returns all adjacent tile pairs where one tile is layer 1 and the other is layer 0.
+   * Each entry: { groundX, groundZ, elevX, elevZ }
+   * Result is cached since elevated platforms don't change after world generation.
+   */
+  getElevatedEdges() {
+    if (this._elevatedEdgesCache) return this._elevatedEdgesCache;
+    const edges = [];
+    for (let z = 0; z < this.height; z++) {
+      for (let x = 0; x < this.width; x++) {
+        const tile = this.tiles[z][x];
+        if ((tile.layer ?? 0) !== 1) continue;
+        for (const [dx, dz] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          const nx = x + dx, nz = z + dz;
+          const neighbor = this.getTile(nx, nz);
+          if (neighbor && (neighbor.layer ?? 0) === 0 &&
+              neighbor.type !== TileType.WATER && neighbor.type !== TileType.DEEP_WATER) {
+            edges.push({ groundX: nx, groundZ: nz, elevX: x, elevZ: z });
+          }
+        }
+      }
+    }
+    this._elevatedEdgesCache = edges;
+    return edges;
   }
 
   /** True if any of the 4 orthogonal neighbours is the given tile type */

@@ -10,13 +10,15 @@ const VITALITY_DRAIN  = 1 / 400; // very slow — full → critical in ~400 game
 const SOCIAL_COOLDOWN = 4;      // game-sec between social checks
 
 export const AgentState = {
-  WANDERING:   'wandering',
-  GATHERING:   'gathering',
-  SLEEPING:    'sleeping',
-  SOCIALIZING: 'socializing',
-  DISCOVERING: 'discovering',
-  FISHING:     'fishing',
-  PERFORMING:  'performing',
+  WANDERING:    'wandering',
+  GATHERING:    'gathering',
+  SLEEPING:     'sleeping',
+  SOCIALIZING:  'socializing',
+  DISCOVERING:  'discovering',
+  FISHING:      'fishing',
+  PERFORMING:   'performing',
+  BUILD_LADDER:  'build_ladder',
+  BUILD_BRIDGE:  'build_bridge',
 };
 
 export class Agent {
@@ -93,6 +95,15 @@ export class Agent {
     this.fishingTimer = 0;
     /** Set to true when walking to a fishing spot so _onArrival knows to start a session */
     this._fishingTrip = false;
+
+    /** Ladder construction countdown (game-sec); active while state === BUILD_LADDER */
+    this.buildLadderTimer = 0;
+    /** The elevated edge this agent is building a ladder at: {groundX, groundZ, elevX, elevZ} */
+    this._ladderTarget = null;
+    /** Bridge construction countdown (game-sec); active while state === BUILD_BRIDGE */
+    this.buildBridgeTimer = 0;
+    /** The water crossing this agent is building a bridge at: {waterX, waterZ, landX, landZ} */
+    this._bridgeTarget = null;
   }
 
   static get TASKS() {
@@ -267,6 +278,36 @@ export class Agent {
       return;
     }
 
+    // ── Building a ladder: stand at edge for ~15 sec then place it ───────
+    if (this.state === AgentState.BUILD_LADDER) {
+      this.buildLadderTimer -= delta;
+      if (this.buildLadderTimer <= 0 && this._ladderTarget) {
+        const { groundX, groundZ, elevX, elevZ } = this._ladderTarget;
+        world.addLadder(groundX, groundZ, elevX, elevZ);
+        this._ladderTarget = null;
+        this.state = AgentState.WANDERING;
+        this._pickWanderTarget(world, allAgents);
+      }
+      this._trySocialise(delta, allAgents, conceptGraph);
+      return;
+    }
+
+    // ── Building a bridge: stand at the bank for ~18 sec then place it ───
+    if (this.state === AgentState.BUILD_BRIDGE) {
+      this.buildBridgeTimer -= delta;
+      if (this.buildBridgeTimer <= 0 && this._bridgeTarget) {
+        const { waterX, waterZ } = this._bridgeTarget;
+        world.addBridge(waterX, waterZ);
+        // invalidate the cache so new crossings are discovered next time
+        world._bridgableEdgesCache = null;
+        this._bridgeTarget = null;
+        this.state = AgentState.WANDERING;
+        this._pickWanderTarget(world, allAgents);
+      }
+      this._trySocialise(delta, allAgents, conceptGraph);
+      return;
+    }
+
     // ── Periodic needs re-evaluation (even mid-wander) ────────────────
     this._needsCheckTimer -= delta;
     if (this._needsCheckTimer <= 0) {
@@ -297,7 +338,7 @@ export class Agent {
       const move = Math.min(AGENT_SPEED * delta, dist);
       const newX = this.x + (dx / dist) * move;
       const newZ = this.z + (dz / dist) * move;
-      if (world.canTraverse(Math.floor(newX), Math.floor(newZ), this.knowledge)) {
+      if (world.canTraverse(Math.floor(newX), Math.floor(newZ), this.knowledge, Math.floor(this.x), Math.floor(this.z))) {
         this.x = newX;
         this.z = newZ;
         this.facingX = dx / dist;
@@ -321,6 +362,32 @@ export class Agent {
 
   _onArrival(world, allAgents, conceptGraph) {
     if (!allAgents) allAgents = [];
+
+    // Ladder building arrival: if we have a target edge, start constructing
+    if (this._ladderTarget && this.knowledge.has('ladder_building')) {
+      const { groundX, groundZ, elevX, elevZ } = this._ladderTarget;
+      const myX = Math.floor(this.x), myZ = Math.floor(this.z);
+      if (myX === groundX && myZ === groundZ &&
+          !world.hasLadderBetween(groundX, groundZ, elevX, elevZ)) {
+        this.state = AgentState.BUILD_LADDER;
+        this.buildLadderTimer = 12 + Math.random() * 6;
+        return;
+      }
+      this._ladderTarget = null; // stale or already built, discard
+    }
+
+    // Bridge building arrival: if we have a target crossing, start constructing
+    if (this._bridgeTarget && this.knowledge.has('bridge_building')) {
+      const { waterX, waterZ, landX, landZ } = this._bridgeTarget;
+      const myX = Math.floor(this.x), myZ = Math.floor(this.z);
+      if (myX === landX && myZ === landZ && !world.hasBridgeAt(waterX, waterZ)) {
+        this.state = AgentState.BUILD_BRIDGE;
+        this.buildBridgeTimer = 15 + Math.random() * 8;
+        return;
+      }
+      this._bridgeTarget = null; // stale or already built, discard
+    }
+
     // Fishing arrival: begin the fishing session
     if (this.state === AgentState.GATHERING && this._fishingTrip) {
       this._fishingTrip = false;
@@ -637,6 +704,7 @@ export class Agent {
   // ── Target selection ──────────────────────────────────────────────────
 
   _pickWanderTarget(world, allAgents = []) {
+    this._ladderTarget = null; // clear any pending ladder build when re-targeting
     const taskDef = this.task ? Agent.TASKS[this.task] : null;
     const radiusBonus = taskDef?.wanderRadiusBonus ?? 0;
     let radius = 4 + Math.floor(this.curiosity * 3 + this.courage * 3) + radiusBonus;
@@ -690,6 +758,28 @@ export class Agent {
       }
     }
 
+    // Ladder builders: occasionally seek an unladdered elevated edge to build at
+    if (this.knowledge.has('ladder_building') && Math.random() < 0.12) {
+      const ladderTarget = this._pickLadderBuildTarget(world);
+      if (ladderTarget) {
+        this._ladderTarget = ladderTarget; // set before return so it isn't cleared again
+        this.targetX = ladderTarget.groundX + 0.5;
+        this.targetZ = ladderTarget.groundZ + 0.5;
+        return;
+      }
+    }
+
+    // Bridge builders: occasionally seek an unbridged water crossing to build at
+    if (this.knowledge.has('bridge_building') && Math.random() < 0.10) {
+      const bridgeTarget = this._pickBridgeBuildTarget(world);
+      if (bridgeTarget) {
+        this._bridgeTarget = bridgeTarget;
+        this.targetX = bridgeTarget.landX + 0.5;
+        this.targetZ = bridgeTarget.landZ + 0.5;
+        return;
+      }
+    }
+
     for (let attempt = 0; attempt < 25; attempt++) {
       const tx = Math.floor(this.x) + Math.floor(Math.random() * radius * 2 + 1) - radius;
       const tz = Math.floor(this.z) + Math.floor(Math.random() * radius * 2 + 1) - radius;
@@ -701,6 +791,42 @@ export class Agent {
     }
     this.targetX = this.x;
     this.targetZ = this.z;
+  }
+
+  /** Find the nearest unladdered elevated edge within reach. Returns {groundX,groundZ,elevX,elevZ} or null. */
+  _pickLadderBuildTarget(world) {
+    const cx = Math.floor(this.x);
+    const cz = Math.floor(this.z);
+    const edges = world.getElevatedEdges();
+    if (!edges.length) return null;
+    // Filter out edges that already have a ladder
+    const unladdered = edges.filter(e => !world.hasLadderBetween(e.groundX, e.groundZ, e.elevX, e.elevZ));
+    if (!unladdered.length) return null;
+    // Pick nearest within a generous radius
+    let best = null;
+    let bestDist = Infinity;
+    for (const edge of unladdered) {
+      const d = Math.hypot(edge.groundX - cx, edge.groundZ - cz);
+      if (d < bestDist && d < 20) { bestDist = d; best = edge; }
+    }
+    return best;
+  }
+
+  /** Find the nearest unbridged water crossing within reach. Returns {waterX,waterZ,landX,landZ} or null. */
+  _pickBridgeBuildTarget(world) {
+    const cx = Math.floor(this.x);
+    const cz = Math.floor(this.z);
+    const edges = world.getBridgableWaterEdges();
+    if (!edges.length) return null;
+    const unbridged = edges.filter(e => !world.hasBridgeAt(e.waterX, e.waterZ));
+    if (!unbridged.length) return null;
+    let best = null;
+    let bestDist = Infinity;
+    for (const edge of unbridged) {
+      const d = Math.hypot(edge.landX - cx, edge.landZ - cz);
+      if (d < bestDist && d < 20) { bestDist = d; best = edge; }
+    }
+    return best;
   }
 
   _pickGatherTarget(world) {

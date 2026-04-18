@@ -221,7 +221,7 @@ export class CrowRenderer {
       legL, legR, footL, footR,
     } of this.entries) {
       const tile  = this.world.getTile(Math.floor(crowSim.x), Math.floor(crowSim.z));
-      const surfY = tile ? TerrainRenderer.surfaceY(tile.type) : 0.1;
+      const surfY = tile ? TerrainRenderer.surfaceY(tile) : 0.1;
 
       const fx  = crowSim.facingX;
       const fz  = crowSim.facingZ;

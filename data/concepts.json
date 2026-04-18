@@ -729,6 +729,41 @@
   }
 ,
 {
+  "id": "ladder_building",
+  "name": "Ladder Building",
+  "era": 2,
+  "icon": "🪜",
+  "description": "Lashing cut wood into rungs and uprights makes a ladder — a simple thing that opens up what was unreachable.",
+  "prerequisites": ["rope", "woodcutting"],
+  "discovery_conditions": [
+    { "type": "has_concept", "value": "rope" },
+    { "type": "has_concept", "value": "woodcutting" }
+  ],
+  "discovery_probability": 0.00028,
+  "spread_rate": 0.04,
+  "effects": {
+    "unlocks_elevated_travel": true
+  }
+},
+{
+  "id": "bridge_building",
+  "name": "Bridge Building",
+  "era": 2,
+  "icon": "🌉",
+  "description": "Felling trees across a narrow crossing and lashing them with rope — a bridge holds what the water would divide.",
+  "prerequisites": ["rope", "woodcutting"],
+  "discovery_conditions": [
+    { "type": "adjacent_to", "value": "WATER" },
+    { "type": "has_concept", "value": "rope" },
+    { "type": "has_concept", "value": "woodcutting" }
+  ],
+  "discovery_probability": 0.00025,
+  "spread_rate": 0.04,
+  "effects": {
+    "unlocks_water_crossing": true
+  }
+},
+{
   "id": "static",
   "name": "Static",
   "era": 3,

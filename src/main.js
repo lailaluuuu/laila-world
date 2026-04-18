@@ -1047,6 +1047,7 @@ async function init() {
     terrainRenderer.updateGlaciers(world.glacierData);
     terrainRenderer.updateResources(world);
     terrainRenderer.updateCutTrees(world);
+    terrainRenderer.updateLadders(world);
     terrainRenderer.updateAnimals(delta > 0 ? delta : 0, {
       gameTime: time.gameTime,
       dayLength: time.dayLength,
