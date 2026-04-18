@@ -29,7 +29,7 @@ import { DisasterSystem }    from './systems/DisasterSystem.js';
 
 const AGENT_COUNT = 12;
 const WILD_HORSE_COUNT = 4;
-const FOX_COUNT  = 6;
+const FOX_COUNT = 6;
 const DEER_COUNT = 5;
 const CROW_COUNT = 7;
 
