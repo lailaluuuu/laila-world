@@ -3,7 +3,7 @@ import { TileType } from './World.js';
 let nextId = 1;
 
 const AGENT_SPEED     = 0.42;  // tiles/sec — sheep amble slowly
-const HUNGER_DRAIN    = 1 / 90; // full → empty in 90 game-sec
+const HUNGER_DRAIN    = 1 / 115; // full → empty in 115 game-sec
 const ENERGY_DRAIN    = 1 / 200;
 const ENERGY_RECOVER  = 1 / 20;
 const VITALITY_DRAIN  = 1 / 400; // very slow — full → critical in ~400 game-sec
@@ -35,12 +35,16 @@ export class Agent {
     this.needs = { hunger: 0.8 + Math.random() * 0.2, energy: 0.8 + Math.random() * 0.2, vitality: 1.0 };
 
     this.state = AgentState.WANDERING;
-    this.knowledge = new Set();   // set of concept IDs
+    this.knowledge = new Set(['dairy', 'animal_domestication']);   // set of concept IDs
 
-    this.curiosity  = 0.3 + Math.random() * 0.5;
+    this.curiosity       = 0.3 + Math.random() * 0.5;
+    this.sociability     = 0.3 + Math.random() * 0.5; // tendency to seek others
+    this.industriousness = 0.3 + Math.random() * 0.5; // eagerness to gather/work
+    this.courage         = 0.3 + Math.random() * 0.5; // wander radius / risk-taking
+    this.creativity      = 0.3 + Math.random() * 0.5; // bonus to discovery
     this.age        = 0;
     this.health     = 1.0;
-    this.maxAge     = 60 + Math.random() * 60; // game-seconds (die of old age)
+    this.maxAge     = 100 + Math.random() * 80; // game-seconds (die of old age)
 
     this.restTimer    = 0;
     this.grazeTimer   = Math.random() * 3; // sheep pause to graze after arriving
@@ -97,6 +101,22 @@ export class Agent {
       teacher:  { icon: '📢', name: 'Teacher', seekSocial: true, spreadBonus: 1.1 },
       scout:    { icon: '🔭', name: 'Scout', wanderRadiusBonus: 3, discoveryBonus: 1.15 },
       carer:    { icon: '💚', name: 'Carer', restThreshold: 0.35, restBonus: 1.1 },
+    };
+  }
+
+  /** Blend parent traits with small random mutation. Returns a plain object to copy onto the child. */
+  static inheritTraits(parentA, parentB) {
+    const blend = (a, b) => {
+      const avg = (a + b) / 2;
+      const mut = (Math.random() - 0.5) * 0.18;
+      return Math.max(0.05, Math.min(0.95, avg + mut));
+    };
+    return {
+      curiosity:       blend(parentA.curiosity,       parentB.curiosity),
+      sociability:     blend(parentA.sociability,     parentB.sociability),
+      industriousness: blend(parentA.industriousness, parentB.industriousness),
+      courage:         blend(parentA.courage,         parentB.courage),
+      creativity:      blend(parentA.creativity,      parentB.creativity),
     };
   }
 
@@ -163,8 +183,9 @@ export class Agent {
     if (this.knowledge.has('temple')) envMult = Math.max(1.0, envMult - 0.04);
     if (this.knowledge.has('church')) envMult = Math.max(1.0, envMult - 0.04);
 
-    // Drain needs
-    this.needs.hunger   = Math.max(0, this.needs.hunger   - HUNGER_DRAIN  * delta);
+    // Drain needs — blight (set by DisasterSystem via world.disasterHungerMult) accelerates hunger
+    const hungerMult = world.disasterHungerMult ?? 1.0;
+    this.needs.hunger   = Math.max(0, this.needs.hunger   - HUNGER_DRAIN  * delta * hungerMult);
     this.needs.vitality = Math.max(0, this.needs.vitality - VITALITY_DRAIN * delta);
     // Medicine / herbalism slow vitality loss passively
     if (hasMedicine) {
@@ -392,6 +413,48 @@ export class Agent {
       }
     }
 
+    // ── Charged materials: amber (forest), copper_ore (stone), lodestone (stone near mountain) ──
+    if (this.inventory.length < 4 && world.chargedTiles?.size > 0) {
+      const tile = world.getTile(Math.floor(this.x), Math.floor(this.z));
+      if (tile) {
+        const key = `${tile.x},${tile.z}`;
+        const chargeData = world.chargedTiles?.get(key);
+
+        // Amber: appears in charged forest tiles after lightning
+        if (chargeData && chargeData.charge > 0.3 &&
+            tile.type === TileType.FOREST &&
+            world.chargedMaterials?.get(key) === 'amber' &&
+            !this.inventory.includes('amber') &&
+            Math.random() < 0.6) {
+          this.inventory.push('amber');
+          world.chargedMaterials.delete(key);
+        }
+
+        // Copper ore: appears in charged stone tiles after lightning
+        if (chargeData && chargeData.charge > 0.3 &&
+            tile.type === TileType.STONE &&
+            world.chargedMaterials?.get(key) === 'copper_ore' &&
+            this.inventory.filter(i => i === 'copper_ore').length < 1 &&
+            Math.random() < 0.55) {
+          this.inventory.push('copper_ore');
+          world.chargedMaterials.delete(key);
+        }
+      }
+    }
+
+    // Lodestone: found on rare stone tiles near mountains (independent of lightning)
+    if (this.inventory.length < 4 && !this.inventory.includes('lodestone') &&
+        world.lodestoneDeposits?.size > 0) {
+      const tile = world.getTile(Math.floor(this.x), Math.floor(this.z));
+      if (tile && tile.type === TileType.STONE) {
+        const key = `${tile.x},${tile.z}`;
+        if (world.lodestoneDeposits.has(key) && Math.random() < 0.08) {
+          this.inventory.push('lodestone');
+          world.lodestoneDeposits.delete(key); // one per deposit
+        }
+      }
+    }
+
     // ── Opportunistic foraging: pick up food to carry regardless of state ──
     // Agents stock up whenever they have inventory room and aren't stuffed.
     // Wandering agents have a lower chance so they don't fill up on junk mid-trip.
@@ -467,7 +530,8 @@ export class Agent {
 
   _decideAction(world, allAgents = []) {
     const taskDef = this.task ? Agent.TASKS[this.task] : null;
-    const gatherThreshold = taskDef?.gatherThreshold ?? 0.25;
+    // Industrious agents gather sooner (higher threshold); lazy agents wait until critical
+    const gatherThreshold = taskDef?.gatherThreshold ?? (0.18 + this.industriousness * 0.14);
     const restThreshold   = taskDef?.restThreshold   ?? 0.2;
     const envMult = this._lastWeatherMult ?? 1.0;
 
@@ -575,10 +639,10 @@ export class Agent {
   _pickWanderTarget(world, allAgents = []) {
     const taskDef = this.task ? Agent.TASKS[this.task] : null;
     const radiusBonus = taskDef?.wanderRadiusBonus ?? 0;
-    let radius = 4 + Math.floor(this.curiosity * 5) + radiusBonus;
+    let radius = 4 + Math.floor(this.curiosity * 3 + this.courage * 3) + radiusBonus;
 
-    // Flock: all agents have a chance to drift toward a nearby peer
-    if (allAgents.length > 1 && Math.random() < 0.12) {
+    // Flock: sociable agents drift toward peers more often
+    if (allAgents.length > 1 && Math.random() < 0.06 + this.sociability * 0.12) {
       const others = allAgents.filter(a => a !== this && a.health > 0);
       if (others.length > 0) {
         // Pick a random nearby agent to drift toward
@@ -785,8 +849,30 @@ export class Agent {
       this.speechBubbleTimer = 2.5;
     }
 
+    // Hint: curious agents near charged tiles wonder about the invisible force
+    if (
+      world.chargedTiles?.size > 0 &&
+      !this.speechBubble &&
+      this.curiosity > 0.55 &&
+      Math.random() < 0.06
+    ) {
+      const cx = Math.floor(this.x);
+      const cz = Math.floor(this.z);
+      const nearCharge = [...(world.chargedTiles?.entries() ?? [])].some(([key, data]) => {
+        if (data.charge < 0.3) return false;
+        const [kx, kz] = key.split(',').map(Number);
+        return Math.hypot(kx - cx, kz - cz) < 3;
+      });
+      if (nearCharge) {
+        const hints = ['✨?', '⚡?', '❓✨', '...?'];
+        this.speechBubble = hints[Math.floor(Math.random() * hints.length)];
+        this.speechBubbleTimer = 2.5;
+      }
+    }
+
     // Pass the throttle interval as effective delta so probability math stays correct
-    const discovered = conceptGraph.checkDiscovery(this, tile, 0.5, world, allAgents);
+    // creativity gives a small bonus on top of curiosity
+    const discovered = conceptGraph.checkDiscovery(this, tile, 0.5 * (1 + this.creativity * 0.3), world, allAgents);
     if (discovered) {
       this.state = AgentState.DISCOVERING;
       this.discoveryFlash = 1.5;
@@ -858,7 +944,7 @@ export class Agent {
     // Child spawns between parents, slightly randomised
     const cx = (this.x + other.x) / 2 + (Math.random() - 0.5) * 1.5;
     const cz = (this.z + other.z) / 2 + (Math.random() - 0.5) * 1.5;
-    conceptGraph.birthEvents.push({ x: cx, z: cz, parentName: this.name });
+    conceptGraph.birthEvents.push({ x: cx, z: cz, parentName: this.name, parentA: this, parentB: other });
   }
 }
 

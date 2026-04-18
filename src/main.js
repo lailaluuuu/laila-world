@@ -13,11 +13,25 @@ import { BeeRenderer }       from './renderer/BeeRenderer.js';
 import { SheepRenderer }        from './renderer/SheepRenderer.js';
 import { HighlandCowRenderer }  from './renderer/HighlandCowRenderer.js';
 import { FlowerRenderer }       from './renderer/FlowerRenderer.js';
+import { RabbitRenderer }       from './renderer/RabbitRenderer.js';
+import { EagleRenderer }        from './renderer/EagleRenderer.js';
+import { MinimapRenderer }      from './renderer/MinimapRenderer.js';
+import { Fox }                  from './simulation/Fox.js';
+import { FoxRenderer }          from './renderer/FoxRenderer.js';
+import { Deer }                 from './simulation/Deer.js';
+import { DeerRenderer }         from './renderer/DeerRenderer.js';
+import { Crow }                 from './simulation/Crow.js';
+import { CrowRenderer }         from './renderer/CrowRenderer.js';
 import { TimeSystem }        from './systems/TimeSystem.js';
 import { WeatherSystem }     from './systems/WeatherSystem.js';
+import { SettlementSystem, TIER_ICONS } from './systems/SettlementSystem.js';
+import { DisasterSystem }    from './systems/DisasterSystem.js';
 
 const AGENT_COUNT = 12;
 const WILD_HORSE_COUNT = 4;
+const FOX_COUNT  = 6;
+const DEER_COUNT = 5;
+const CROW_COUNT = 7;
 
 // ── Error handling ──────────────────────────────────────────────────────────
 
@@ -70,10 +84,20 @@ async function init() {
   let sheepRenderer;
   let highlandCowRenderer;
   let flowerRenderer;
+  let rabbitRenderer;
+  let eagleRenderer;
+  let foxes = [];
+  let foxRenderer;
+  let deer = [];
+  let deerRenderer;
+  let crows = [];
+  let crowRenderer;
+  let minimap;
   try {
   world = new World();
   world.naturalFires = new Map();
   let lightningCooldown = 0;
+  let prevChargedKeys = new Set(); // track which tiles had charge lights last frame
   let glacierNotifyState = 'frozen'; // 'frozen' | 'melting' | 'melted'
   conceptGraph = new ConceptGraph(conceptsData);
   const agents = world.getSpawnPoints(AGENT_COUNT).map(p => new Agent(p.x, p.z));
@@ -89,9 +113,20 @@ async function init() {
   highlandCowRenderer = new HighlandCowRenderer(wr.scene, world);
   flowerRenderer = new FlowerRenderer(wr.scene, world);
   buildingRenderer = new BuildingRenderer(wr.scene, world);
+  rabbitRenderer = new RabbitRenderer(wr.scene, world);
+  eagleRenderer = new EagleRenderer(wr.scene, world);
+  foxes = world.getWildHorseSpawnPoints(FOX_COUNT).map(p => new Fox(p.x, p.z));
+  foxRenderer = new FoxRenderer(wr.scene, foxes, world);
+  deer = world.getWildHorseSpawnPoints(DEER_COUNT).map(p => new Deer(p.x, p.z));
+  deerRenderer = new DeerRenderer(wr.scene, deer, world);
+  crows = world.getWildHorseSpawnPoints(CROW_COUNT).map(p => new Crow(p.x, p.z));
+  crowRenderer = new CrowRenderer(wr.scene, crows, world);
+  minimap = new MinimapRenderer(world);
 
   time = new TimeSystem();
   weather = new WeatherSystem();
+  let settlements = new SettlementSystem();
+  let disasters   = new DisasterSystem();
 
   // ── Fade out loading screen ───────────────────────────────────────────
   const loading = document.getElementById('loading');
@@ -112,7 +147,13 @@ async function init() {
   let selectedAgent = null;
   let selectedTile  = null;
   let gameOver = false;
+  let crowPlacementMode = false;
   let gameOverAutoResetId = null;
+
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key === 'm' || e.key === 'M') minimap.toggle();
+  });
 
   document.getElementById('info-close').addEventListener('click', () => {
     if (selectedAgent) selectedAgent.selected = false;
@@ -183,11 +224,18 @@ async function init() {
     sheepRenderer.dispose();
     highlandCowRenderer.dispose();
     flowerRenderer.dispose();
+    rabbitRenderer.dispose();
+    eagleRenderer.dispose();
+    foxRenderer.dispose();
+    deerRenderer.dispose();
+    minimap.destroy();
     buildingRenderer.dispose();
 
     world = new World();
     world.naturalFires = new Map();
     lightningCooldown = 0;
+    prevChargedKeys = new Set();
+    wr.clearKnowledgeLights();
     conceptGraph = new ConceptGraph(conceptsData);
     agents.length = 0;
     const startPop = Number(popSlider.value);
@@ -203,6 +251,15 @@ async function init() {
     sheepRenderer = new SheepRenderer(wr.scene, world);
     highlandCowRenderer = new HighlandCowRenderer(wr.scene, world);
     flowerRenderer = new FlowerRenderer(wr.scene, world);
+    eagleRenderer = new EagleRenderer(wr.scene, world);
+    rabbitRenderer = new RabbitRenderer(wr.scene, world);
+    foxes.length = 0;
+    world.getWildHorseSpawnPoints(FOX_COUNT).forEach(p => foxes.push(new Fox(p.x, p.z)));
+    foxRenderer = new FoxRenderer(wr.scene, foxes, world);
+    deer.length = 0;
+    world.getWildHorseSpawnPoints(DEER_COUNT).forEach(p => deer.push(new Deer(p.x, p.z)));
+    deerRenderer = new DeerRenderer(wr.scene, deer, world);
+    minimap = new MinimapRenderer(world);
     buildingRenderer = new BuildingRenderer(wr.scene, world);
 
     time.gameTime = (8 / 24) * 120; // reset to 08:00
@@ -210,6 +267,13 @@ async function init() {
     weather.current = 'CLEAR';
     weather._timer  = 0;
     glacierNotifyState = 'frozen';
+    settlements = new SettlementSystem();
+    disasters   = new DisasterSystem();
+    world.disasterResourceMult = 1.0;
+    world.disasterHungerMult   = 1.0;
+    world.isBeachFlooded       = false;
+    const disasterBanner = document.getElementById('disaster-banner');
+    if (disasterBanner) disasterBanner.classList.add('hidden');
     gameOver = false;
     if (gameOverAutoResetId) {
       clearTimeout(gameOverAutoResetId);
@@ -332,6 +396,15 @@ async function init() {
     raycaster.setFromCamera(ndc, wr.camera);
     if (!raycaster.ray.intersectPlane(groundPlane, groundPoint)) return;
 
+    // ── Crow placement mode ────────────────────────────────────────────
+    if (crowPlacementMode) {
+      const cx = groundPoint.x / TILE_SIZE;
+      const cz = groundPoint.z / TILE_SIZE;
+      const newCrow = new Crow(cx, cz);
+      crowRenderer.addCrow(newCrow);
+      return;
+    }
+
     // Find nearest live agent to the click position
     let hit = null;
     let bestDist = PICK_RADIUS;
@@ -378,6 +451,18 @@ async function init() {
         }
       }
     }
+  });
+
+  // ── Crow placement button ──────────────────────────────────────────────
+  const placeCrowBtn = document.getElementById('place-crow-btn');
+  function setCrowPlacementMode(on) {
+    crowPlacementMode = on;
+    placeCrowBtn.classList.toggle('active', on);
+    canvas.style.cursor = on ? 'crosshair' : '';
+  }
+  placeCrowBtn.addEventListener('click', () => setCrowPlacementMode(!crowPlacementMode));
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && crowPlacementMode) setCrowPlacementMode(false);
   });
 
   // ── HUD update (throttled) ─────────────────────────────────────────────
@@ -468,9 +553,40 @@ async function init() {
     } else if (selectedTile && world.getTile(selectedTile.x, selectedTile.z)) {
       updateTileInfoPanel(world.getTile(selectedTile.x, selectedTile.z));
     }
+
+    // ── Settlements ────────────────────────────────────────────────────
+    const settlementList = document.getElementById('settlements-list');
+    if (settlementList) {
+      if (settlements.settlements.length === 0) {
+        settlementList.innerHTML = '<em>None yet...</em>';
+      } else {
+        settlementList.innerHTML = settlements.settlements.map(s => {
+          const icon = TIER_ICONS[s.tier] ?? '🏠';
+          return `<div class="settlement-item">
+            <span>${icon} ${s.name}</span>
+            <span class="settlement-size">${s.members.size}</span>
+          </div>`;
+        }).join('');
+      }
+    }
+
+    updateStatsPanel(alive, discovered);
     } catch (e) {
       console.error('[World] HUD update failed', e);
     }
+  }
+
+  function updateStatsPanel(alive, discovered) {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    const tod = time.timeOfDay;
+    const hh  = Math.floor(tod * 24).toString().padStart(2, '0');
+    const mm  = Math.floor((tod * 24 % 1) * 60).toString().padStart(2, '0');
+    set('sp-population',  alive);
+    set('sp-day',         'Day ' + time.day);
+    set('sp-time',        hh + ':' + mm);
+    set('sp-season',      time.season);
+    set('sp-weather',     weather.label);
+    set('sp-discoveries', discovered.length);
   }
 
   const TILE_LABELS = {
@@ -489,7 +605,7 @@ async function init() {
     [TileType.GRASS]:    'Berries, sheep, and pigs. Good for gathering food.',
     [TileType.WOODLAND]: 'Open woodland with scattered trees and herbs. Good for gathering and hunting.',
     [TileType.FOREST]:   'Trees, wild game, mushrooms, and healing herbs. Rich in food and natural resources.',
-    [TileType.STONE]:    'Rocks and flint shards. Good for stone tools and pottery.',
+    [TileType.STONE]:    'Rocks and flint shards. Good for stone tools and pottery. After a lightning strike, the stone may hold a strange charge.',
     [TileType.MOUNTAIN]: 'Peaks and snow. Requires Mountain Climbing to traverse.',
   };
 
@@ -529,6 +645,24 @@ async function init() {
           <span style="font-size:11px;opacity:.8">${tile.flint === 1 ? 'Present' : 'Gathered'}</span>
         </div>`;
     }
+    const chargeData = world.chargedTiles?.get(`${tile.x},${tile.z}`);
+    if (chargeData && chargeData.charge > 0.05) {
+      const chargeStr = chargeData.charge > 0.7 ? 'Strongly charged' : chargeData.charge > 0.3 ? 'Charged' : 'Faintly charged';
+      resourceHtml += `
+        <div class="info-row">
+          <span class="info-label">✨ Electric</span>
+          <span style="font-size:11px;opacity:.8;color:#88ccff">${chargeStr}</span>
+        </div>`;
+    }
+    const chargedMat = world.chargedMaterials?.get(`${tile.x},${tile.z}`);
+    if (chargedMat) {
+      const matLabel = chargedMat === 'amber' ? '🟡 Amber' : '🟤 Copper Ore';
+      resourceHtml += `
+        <div class="info-row">
+          <span class="info-label">${matLabel}</span>
+          <span style="font-size:11px;opacity:.8">Present</span>
+        </div>`;
+    }
     document.getElementById('info-content').innerHTML = `
       <div class="info-name">${info.icon} ${info.name}</div>
       <div class="info-state" style="opacity:.7;font-size:12px">Tile (${tile.x}, ${tile.z})</div>
@@ -546,6 +680,9 @@ async function init() {
     milk:      { icon: '🥛', label: 'Milk',      color: '#f0f0f8' },
     flint:     { icon: '🪨', label: 'Flint',     color: '#94a3b8' },
     wood:      { icon: '🪵', label: 'Wood',      color: '#a16207' },
+    amber:     { icon: '🟡', label: 'Amber',     color: '#f59e0b' },
+    lodestone: { icon: '🧲', label: 'Lodestone', color: '#6b7280' },
+    copper_ore:{ icon: '🟤', label: 'Copper Ore', color: '#b45309' },
   };
 
   function updateInfoPanel(agent) {
@@ -600,6 +737,18 @@ async function init() {
           <span class="info-label">Curiosity</span>
           <span style="font-size:11px;opacity:.5">${(agent.curiosity * 100).toFixed(0)}%</span>
         </div>
+        <div class="info-row">
+          <span class="info-label">Sociability</span>
+          <span style="font-size:11px;opacity:.5">${(agent.sociability * 100).toFixed(0)}%</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Courage</span>
+          <span style="font-size:11px;opacity:.5">${(agent.courage * 100).toFixed(0)}%</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Creativity</span>
+          <span style="font-size:11px;opacity:.5">${(agent.creativity * 100).toFixed(0)}%</span>
+        </div>
         ${agent.task ? `<div class="info-row"><span class="info-label">Task</span><span class="info-tag">${Agent.TASKS[agent.task]?.icon ?? '•'} ${Agent.TASKS[agent.task]?.name ?? agent.task}</span></div>` : ''}
       </div>
       ${inventoryHtml}
@@ -645,23 +794,48 @@ async function init() {
         if (weather.current === 'RAIN')   showNotification('Rain begins to fall.', 'env');
         if (weather.current === 'CLEAR' && (prevWeather === 'STORM' || prevWeather === 'RAIN')) {
           showNotification('The skies clear.', 'env');
-          wr.triggerRainbow();
+          wr.triggerRainbow(time.timeOfDay);
         }
       }
 
-      // Lightning strikes during storms — can set forest on fire
+      // Lightning strikes during storms — charges tiles and can ignite forests
       if (weather.current === 'STORM') {
         lightningCooldown -= delta;
         if (lightningCooldown <= 0) {
-          lightningCooldown = 35 + Math.random() * 25;
-          const forestTiles = world.getTilesOfType(TileType.FOREST);
-          if (forestTiles.length > 0) {
-            const tile = forestTiles[Math.floor(Math.random() * forestTiles.length)];
+          lightningCooldown = 30 + Math.random() * 25;
+
+          // Lightning can strike any exposed tile type (forests, stone, mountains, grass, beach)
+          const strikableTiles = world.getTilesOfType([
+            TileType.FOREST, TileType.STONE, TileType.MOUNTAIN, TileType.GRASS, TileType.BEACH
+          ]);
+          if (strikableTiles.length > 0) {
+            const tile = strikableTiles[Math.floor(Math.random() * strikableTiles.length)];
             const key = `${tile.x},${tile.z}`;
-            world.naturalFires.set(key, { endTime: time.gameTime + 28 + Math.random() * 18 });
-            wr.addFireLight(tile.x, tile.z);
-            wr.addFlash(tile.x * TILE_SIZE + TILE_SIZE / 2, tile.z * TILE_SIZE + TILE_SIZE / 2, 0xffcc44);
-            showNotification('Lightning strikes the forest!', 'env');
+
+            // Charge nearby tiles electrically
+            world.chargeArea(tile.x, tile.z, 2);
+
+            // Spawn rare charged materials
+            if (tile.type === TileType.FOREST && Math.random() < 0.35) {
+              world.chargedMaterials.set(key, 'amber');
+            } else if (tile.type === TileType.STONE && Math.random() < 0.25) {
+              world.chargedMaterials.set(key, 'copper_ore');
+            }
+
+            // Forest fires still start from forest strikes
+            if (tile.type === TileType.FOREST) {
+              world.naturalFires.set(key, { endTime: time.gameTime + 28 + Math.random() * 18 });
+              wr.addFireLight(tile.x, tile.z);
+              showNotification('Lightning strikes the forest! The air crackles with unseen fire.', 'env');
+            } else if (tile.type === TileType.STONE) {
+              showNotification('Lightning cleaves the stone. The rocks hold something strange.', 'env');
+            } else if (tile.type === TileType.MOUNTAIN) {
+              showNotification('Lightning splits the mountain peak. A blue glow lingers.', 'env');
+            } else {
+              showNotification('Lightning strikes the earth!', 'env');
+            }
+
+            wr.addFlash(tile.x * TILE_SIZE + TILE_SIZE / 2, tile.z * TILE_SIZE + TILE_SIZE / 2, 0xaaddff);
           }
         }
       }
@@ -682,6 +856,22 @@ async function init() {
       world.updateChickenNests(delta);
       // Tick cow milk refill
       world.updateCows(delta);
+      // Tick charged tile decay
+      world.updateChargedTiles(delta);
+      // Sync charge lights to charged tile state
+      const currentChargedKeys = new Set(world.chargedTiles.keys());
+      for (const key of currentChargedKeys) {
+        const data = world.chargedTiles.get(key);
+        const [tx, tz] = key.split(',').map(Number);
+        wr.addChargeLight(tx, tz, data.charge * 0.7);
+      }
+      for (const key of prevChargedKeys) {
+        if (!currentChargedKeys.has(key)) {
+          const [tx, tz] = key.split(',').map(Number);
+          wr.removeChargeLight(tx, tz);
+        }
+      }
+      prevChargedKeys = currentChargedKeys;
 
       // Melt/refreeze glaciers based on temperature
       world.updateGlaciers(delta, weather.temperature);
@@ -719,6 +909,9 @@ async function init() {
 
       const wMult = weather.energyDrainMult;
       for (const h of horses) h.tick(delta, world, horses);
+      for (const f of foxes) f.tick(delta, world, agents);
+      for (const d of deer) d.tick(delta, world, agents, foxes);
+      for (const c of crows) c.tick(delta, world, agents);
       for (const agent of agents) {
         if (agent?.health > 0) {
           try {
@@ -747,6 +940,39 @@ async function init() {
         }
       }
 
+      // ── Settlement system ──────────────────────────────────────────────
+      settlements.update(delta, agents);
+      for (const evt of settlements.drainEvents()) {
+        const icon = TIER_ICONS[evt.settlement.tier] ?? '🏠';
+        if (evt.type === 'founded') {
+          showNotification(`${icon} ${evt.settlement.name} founded!`, 'social');
+        } else if (evt.type === 'tier_up') {
+          showNotification(`${icon} ${evt.settlement.name} grew into a ${evt.settlement.tier}!`, 'social');
+        } else if (evt.type === 'disbanded') {
+          showNotification(`${evt.settlement.name} was abandoned.`, 'env');
+        }
+      }
+
+      // ── Disaster system ────────────────────────────────────────────────
+      disasters.update(delta, time.gameTime);
+      // Apply disaster modifiers to world each frame
+      world.disasterResourceMult = disasters.resourceRegenMult;
+      world.disasterHungerMult   = disasters.hungerDrainMult;
+      world.isBeachFlooded       = disasters.isFloodActive;
+      for (const evt of disasters.drainEvents()) {
+        const disasterBanner = document.getElementById('disaster-banner');
+        if (evt.type === 'start') {
+          showNotification(`${evt.disaster.icon} ${evt.disaster.name}! ${evt.disaster.description}`, 'env');
+          if (disasterBanner) {
+            document.getElementById('disaster-text').textContent = `${evt.disaster.icon} ${evt.disaster.name}`;
+            disasterBanner.classList.remove('hidden');
+          }
+        } else if (evt.type === 'end') {
+          showNotification(`The ${evt.disaster.name.toLowerCase()} has passed.`, 'env');
+          if (disasterBanner) disasterBanner.classList.add('hidden');
+        }
+      }
+
       // Handle simulation events
       for (const evt of conceptGraph.drainEvents()) {
         const concept = conceptGraph.concepts.get(evt.conceptId);
@@ -765,9 +991,19 @@ async function init() {
           // Flash at agent location
           const agent = agents.find(a => a.id === evt.agentId);
           if (agent) {
-            const wx = agent.x * 2;
-            const wz = agent.z * 2;
+            const wx = agent.x * TILE_SIZE;
+            const wz = agent.z * TILE_SIZE;
             wr.addFlash(wx, wz, 0xff8800);
+          }
+          if (evt.conceptId === 'static') {
+            showNotification(`${evt.agentName} felt something strange — invisible fire between their skin and the world. ✨`, 'social');
+          }
+          if (evt.conceptId === 'electricity') {
+            showNotification(`${evt.agentName} has understood the sky-fire! ⚡`, 'social');
+            // The moment electricity is understood, agents light up their land
+            for (const a of agents.filter(a => a.health > 0)) {
+              wr.addGroundLight(a.x * TILE_SIZE, a.z * TILE_SIZE, 0x44aaff, 400, 1.6);
+            }
           }
         }
         // Spread events are silent (too frequent to notify)
@@ -791,6 +1027,11 @@ async function init() {
         }
 
         const child = new Agent(bx, bz);
+        // Inherit blended personality traits from both parents
+        if (evt.parentA && evt.parentB) {
+          const traits = Agent.inheritTraits(evt.parentA, evt.parentB);
+          Object.assign(child, traits);
+        }
         agents.push(child);
         ar.addAgent(child);
         birthGameTimes.push(time.gameTime);
@@ -812,14 +1053,20 @@ async function init() {
     });
     ar.update(wr.camera);
     horseRenderer.update();
+    foxRenderer.update();
+    deerRenderer.update();
+    crowRenderer.update(delta > 0 ? delta : 0);
     butterflyRenderer.update(delta > 0 ? delta : 0, weather.current === 'CLEAR');
     beeRenderer.update(delta > 0 ? delta : 0, weather.current === 'CLEAR');
     sheepRenderer.update(delta > 0 ? delta : 0);
     highlandCowRenderer.update(delta > 0 ? delta : 0);
     flowerRenderer.update(delta > 0 ? delta : 0, time.season);
+    eagleRenderer.update(delta > 0 ? delta : 0);
+    rabbitRenderer.update(delta > 0 ? delta : 0, agents);
     buildingRenderer.checkAgents(agents);
     wr.updateRain(realDelta, weather.isRaining, weather.isStorm);
     wr.render();
+    minimap.update(agents);
     updateHUD();
     } catch (e) {
       const msg = e?.message || e?.toString?.() || 'Game loop error';

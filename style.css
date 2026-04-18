@@ -377,6 +377,51 @@ body {
   padding-left: 8px;
 }
 
+/* ── Settlements panel ───────────────────────── */
+
+#settlements-panel {
+  min-width: 190px;
+}
+
+.settlement-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  padding: 1px 0;
+}
+
+.settlement-size {
+  font-size: 11px;
+  opacity: 0.45;
+}
+
+/* ── Disaster banner ─────────────────────────── */
+
+#disaster-banner {
+  position: fixed;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(180, 30, 10, 0.82);
+  color: #ffd0c0;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 5px 18px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 100, 60, 0.45);
+  backdrop-filter: blur(8px);
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  z-index: 50;
+  transition: opacity 0.4s;
+}
+
+#disaster-banner.hidden {
+  display: none;
+}
+
 /* ── Speed controls ──────────────────────────── */
 
 #speed-controls {
@@ -404,6 +449,32 @@ body {
   background: rgba(245,158,11,0.2);
   border-color: rgba(245,158,11,0.45);
   color: #f59e0b;
+}
+
+/* ── Place-crow button ───────────────────────── */
+
+#place-crow-btn {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #e0e0e0;
+  padding: 6px 13px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  pointer-events: all;
+  margin-left: 10px;
+}
+
+#place-crow-btn:hover {
+  background: rgba(255,255,255,0.14);
+}
+
+#place-crow-btn.active {
+  background: rgba(80, 60, 160, 0.35);
+  border-color: rgba(140, 110, 255, 0.6);
+  color: #c8c8f0;
+  box-shadow: 0 0 8px rgba(120, 90, 220, 0.4);
 }
 
 /* ── Info panel ──────────────────────────────── */
@@ -518,6 +589,37 @@ body {
   opacity: 0.5;
   text-transform: capitalize;
   letter-spacing: 0.03em;
+}
+
+/* ── Stats panel (bottom-right, above minimap) ── */
+
+#stats-panel {
+  position: absolute;
+  bottom: 232px;
+  right: 12px;
+  width: 160px;
+  background: rgba(10, 20, 36, 0.82);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  padding: 8px 10px;
+  pointer-events: none;
+}
+
+.stats-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+.stats-row-label {
+  opacity: 0.45;
+}
+
+.stats-row-value {
+  color: #c5e0f8;
+  font-weight: 500;
 }
 
 /* ── Loading screen ──────────────────────────── */

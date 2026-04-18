@@ -727,4 +727,70 @@
       "hunger_efficiency": 1.08
     }
   }
+,
+{
+  "id": "static",
+  "name": "Static",
+  "era": 3,
+  "icon": "✨",
+  "description": "After the storm the air crackles. Hair stands. A spark leaps from fingers to stone — something invisible stirs in the charged world.",
+  "prerequisites": [],
+  "discovery_conditions": [
+    { "type": "near_charged_tile", "value": 3 }
+  ],
+  "discovery_probability": 0.0001,
+  "spread_rate": 0.018,
+  "effects": {
+    "discovery_bonus": 1.05
+  }
+},
+{
+  "id": "magnetism",
+  "name": "Magnetism",
+  "era": 3,
+  "icon": "🧲",
+  "description": "A heavy dark stone drawn from deep rock reaches invisibly toward iron — a silent, nameless force from within the mountain.",
+  "prerequisites": ["stone_tools"],
+  "discovery_conditions": [
+    { "type": "has_item", "value": "lodestone" }
+  ],
+  "discovery_probability": 0.00015,
+  "spread_rate": 0.018,
+  "effects": {
+    "discovery_bonus": 1.08
+  }
+},
+{
+  "id": "electricity",
+  "name": "Electricity",
+  "era": 4,
+  "icon": "⚡",
+  "description": "The sky-fire — not fire at all, but something older and faster. Those who have felt static begin to see it everywhere: in the storm, in the stone, in life itself.",
+  "prerequisites": ["static"],
+  "discovery_conditions": [
+    { "type": "near_charged_tile", "value": 2 }
+  ],
+  "discovery_probability": 0.00003,
+  "spread_rate": 0.010,
+  "effects": {
+    "discovery_bonus": 1.15
+  }
+},
+{
+  "id": "conductivity",
+  "name": "Conductivity",
+  "era": 4,
+  "icon": "🔋",
+  "description": "Copper and iron drink in the sky-fire. Stone and air hold it back. The charge chooses its own path through the world.",
+  "prerequisites": ["electricity", "metal_tools"],
+  "discovery_conditions": [
+    { "type": "near_charged_tile", "value": 2 },
+    { "type": "has_item", "value": "copper_ore" }
+  ],
+  "discovery_probability": 0.00006,
+  "spread_rate": 0.015,
+  "effects": {
+    "gather_efficiency": 1.05
+  }
+}
 ]

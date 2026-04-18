@@ -56,6 +56,42 @@ export class ConceptGraph {
         });
         if (nearEggs) prob *= 6;
       }
+      // Static: charged tiles massively amplify the discovery (the whole point is proximity to charge)
+      if (id === 'static' && world?.chargedTiles?.size > 0) {
+        const cx = Math.floor(agent.x);
+        const cz = Math.floor(agent.z);
+        let maxCharge = 0;
+        for (const [key, data] of world.chargedTiles) {
+          const [kx, kz] = key.split(',').map(Number);
+          if (Math.hypot(kx - cx, kz - cz) < 4) maxCharge = Math.max(maxCharge, data.charge);
+        }
+        if (maxCharge > 0) prob *= 35 * maxCharge * agent.curiosity;
+      }
+      // Magnetism: holding a lodestone is the trigger
+      if (id === 'magnetism' && agent.inventory?.includes('lodestone')) prob *= 22;
+      // Electricity: requires static knowledge + strong charge nearby; magnetism helps but isn't required
+      if (id === 'electricity' && world?.chargedTiles?.size > 0) {
+        const cx = Math.floor(agent.x);
+        const cz = Math.floor(agent.z);
+        let maxCharge = 0;
+        for (const [key, data] of world.chargedTiles) {
+          const [kx, kz] = key.split(',').map(Number);
+          if (Math.hypot(kx - cx, kz - cz) < 5) maxCharge = Math.max(maxCharge, data.charge);
+        }
+        if (maxCharge > 0.5) prob *= 20 * maxCharge;
+        if (agent.knowledge.has('magnetism')) prob *= 2.5; // magnetism accelerates the insight
+      }
+      // Conductivity: copper in hand near a charged tile
+      if (id === 'conductivity' && agent.inventory?.includes('copper_ore') && world?.chargedTiles?.size > 0) {
+        const cx = Math.floor(agent.x);
+        const cz = Math.floor(agent.z);
+        const nearCharged = [...world.chargedTiles.entries()].some(([key, data]) => {
+          if (data.charge < 0.2) return false;
+          const [kx, kz] = key.split(',').map(Number);
+          return Math.hypot(kx - cx, kz - cz) < 3;
+        });
+        if (nearCharged) prob *= 18;
+      }
       if (Math.random() < prob) {
         this._grant(agent, id);
         if (id === 'stone_tools') {
@@ -146,6 +182,21 @@ export class ConceptGraph {
           Math.hypot(a.x - agent.x, a.z - agent.z) < 6
         ).length;
         if (count < cond.value) return false;
+      }
+      if (cond.type === 'near_charged_tile') {
+        const radius = cond.value ?? 3;
+        const cx = Math.floor(agent.x);
+        const cz = Math.floor(agent.z);
+        if (!world?.chargedTiles?.size) return false;
+        const hasCharged = [...world.chargedTiles.entries()].some(([key, data]) => {
+          if (data.charge < 0.1) return false;
+          const [kx, kz] = key.split(',').map(Number);
+          return Math.hypot(kx - cx, kz - cz) < radius;
+        });
+        if (!hasCharged) return false;
+      }
+      if (cond.type === 'has_item') {
+        if (!agent.inventory?.includes(cond.value)) return false;
       }
     }
     return true;

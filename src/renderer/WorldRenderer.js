@@ -15,11 +15,11 @@ export class WorldRenderer {
     // ── Scene ──────────────────────────────────────────────────────────
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(SKY_COLOR);
-    this.scene.fog = new THREE.FogExp2(SKY_COLOR, 0.006);
+    this.scene.fog = new THREE.FogExp2(SKY_COLOR, 0.003);
 
     // Sky colour lerp targets
     this._targetSky = new THREE.Color(SKY_COLOR);
-    this._targetFog = 0.006;
+    this._targetFog = 0.003;
     this._timeOfDay = 0.5; // 0=midnight, 0.5=noon
     this._weatherSunMult = 1;
 
@@ -60,12 +60,12 @@ export class WorldRenderer {
     this.sun.position.set(24, 45, 20);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
-    this.sun.shadow.camera.near   =  1;
-    this.sun.shadow.camera.far    = 200;
-    this.sun.shadow.camera.left   = -72;
-    this.sun.shadow.camera.right  =  72;
-    this.sun.shadow.camera.top    =  72;
-    this.sun.shadow.camera.bottom = -72;
+    this.sun.shadow.camera.near   =   1;
+    this.sun.shadow.camera.far    = 400;
+    this.sun.shadow.camera.left   = -144;
+    this.sun.shadow.camera.right  =  144;
+    this.sun.shadow.camera.top    =  144;
+    this.sun.shadow.camera.bottom = -144;
     this.sun.shadow.bias = -0.0005;
     this.scene.add(this.sun);
 
@@ -85,9 +85,6 @@ export class WorldRenderer {
     // ── Clouds ─────────────────────────────────────────────────────────
     this._buildClouds();
 
-    // ── Aurora borealis ────────────────────────────────────────────────
-    this._buildAurora();
-
     // ── Milky Way ──────────────────────────────────────────────────────
     this._buildMilkyWay();
 
@@ -99,41 +96,15 @@ export class WorldRenderer {
   }
 
   _buildSunDisc() {
-    const coreMat = new THREE.MeshBasicMaterial({ color: 0xfff5aa, transparent: true, opacity: 1, fog: false });
-    const glowMat = new THREE.MeshBasicMaterial({ color: 0xffdd44, transparent: true, opacity: 0.18, fog: false, depthWrite: false });
+    const coreMat = new THREE.MeshBasicMaterial({ color: 0xfff5aa, transparent: true, opacity: 1, fog: false, depthTest: false, depthWrite: false });
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xffdd44, transparent: true, opacity: 0.18, fog: false, depthTest: false, depthWrite: false });
     const core = new THREE.Mesh(new THREE.SphereGeometry(2.2, 16, 12), coreMat);
     const glow = new THREE.Mesh(new THREE.SphereGeometry(3.8, 16, 12), glowMat);
     this._sunGroup = new THREE.Group();
+    this._sunGroup.renderOrder = -1;
     this._sunGroup.add(core, glow);
     this._sunGroup.visible = false;
     this.scene.add(this._sunGroup);
-  }
-
-  _buildAurora() {
-    const COLORS  = [0x00ff77, 0x00ddbb, 0x44aaff, 0x9944ff, 0xff44bb, 0x00ff77, 0x22ddcc];
-    this._auroraCurtains = [];
-    const COUNT = 7;
-    for (let i = 0; i < COUNT; i++) {
-      const angle = (i / COUNT) * Math.PI * 2;
-      const R = 68;
-      const geom  = new THREE.PlaneGeometry(32, 24, 1, 12);
-      // Store base X positions for wave animation
-      geom.userData.baseX = Float32Array.from(
-        geom.attributes.position.array.filter((_, idx) => idx % 3 === 0),
-      );
-      const mat = new THREE.MeshBasicMaterial({
-        color: COLORS[i], transparent: true, opacity: 0,
-        depthWrite: false, side: THREE.DoubleSide,
-      });
-      const mesh = new THREE.Mesh(geom, mat);
-      mesh.position.set(CENTER_X + R * Math.cos(angle), 50, CENTER_Z + R * Math.sin(angle));
-      mesh.lookAt(CENTER_X, 50, CENTER_Z);
-      mesh.userData.phase = Math.random() * Math.PI * 2;
-      mesh.userData.speed = 0.5 + Math.random() * 0.5;
-      this.scene.add(mesh);
-      this._auroraCurtains.push(mesh);
-    }
-    this._auroraState = { phase: 'hidden', opacity: 0, timer: 0, duration: 0 };
   }
 
   _buildClouds() {
@@ -217,7 +188,7 @@ export class WorldRenderer {
     const TUBE    = 1.25;
     this._rainbowMeshes = [];
     const group = new THREE.Group();
-    group.position.set(CENTER_X, 0, CENTER_Z - 62);
+    group.position.set(CENTER_X, 0, CENTER_Z - 94);
     COLORS.forEach((col, idx) => {
       const geom = new THREE.TorusGeometry(RADII[idx], TUBE, 8, 72, Math.PI);
       const mat  = new THREE.MeshBasicMaterial({
@@ -376,14 +347,18 @@ export class WorldRenderer {
     this._shootingStarLine.geometry.attributes.position.needsUpdate = true;
   }
 
-  /** Trigger a rainbow with a given probability (0–1). Call after rain ends. */
-  triggerRainbow(chance = 0.65) {
-    if (Math.random() > chance) return;
+  /** Trigger a rainbow after rain ends. Only fires during daylight and with a low random chance. */
+  triggerRainbow(timeOfDay = 0.5) {
+    // Daylight window: after sunrise (~0.22) and before dusk (~0.78)
+    const isDaytime = timeOfDay >= 0.22 && timeOfDay <= 0.78;
+    if (!isDaytime) return;
+    // Only ~25% of qualifying rain events produce a rainbow
+    if (Math.random() > 0.25) return;
     const s = this._rainbowState;
     s.phase    = 'fadein';
     s.opacity  = 0;
     s.timer    = 0;
-    s.duration = 40 + Math.random() * 35; // visible for 40–75 real seconds
+    s.duration = 10 + Math.random() * 10; // visible for 10–20 real seconds
     this._rainbowGroup.visible = true;
   }
 
@@ -497,6 +472,50 @@ export class WorldRenderer {
     }
   }
 
+  /** Add a dim blue-white charge glow at tile coordinates. Replaces any existing one. */
+  addChargeLight(x, z, intensity = 0.6) {
+    const key = `${x},${z}`;
+    const existing = this._chargeLights?.get(key);
+    if (existing) {
+      existing.light.intensity = Math.max(existing.light.intensity, intensity);
+      return;
+    }
+    const wx = x * 2 + 1;
+    const wz = z * 2 + 1;
+    const light = new THREE.PointLight(0x88ccff, intensity, 10);
+    light.position.set(wx, 1.2, wz);
+    this.scene.add(light);
+    (this._chargeLights ??= new Map()).set(key, { light, age: 0 });
+  }
+
+  /** Remove the charge glow at tile coordinates. */
+  removeChargeLight(x, z) {
+    const key = `${x},${z}`;
+    const entry = this._chargeLights?.get(key);
+    if (entry) {
+      this.scene.remove(entry.light);
+      this._chargeLights.delete(key);
+    }
+  }
+
+  /**
+   * Place a ground-level knowledge light on the land where an agent stands.
+   * intensity: peak brightness. duration: real-time seconds before it fades out.
+   */
+  addGroundLight(wx, wz, color = 0xff8844, duration = 120, intensity = 1.2) {
+    if ((this._groundLights?.length ?? 0) >= 80) return;
+    const light = new THREE.PointLight(color, intensity, 12);
+    light.position.set(wx, 0.5, wz);
+    this.scene.add(light);
+    (this._groundLights ??= []).push({ light, t: 0, duration, peakIntensity: intensity });
+  }
+
+  /** Remove all ground knowledge lights (called on world reset). */
+  clearKnowledgeLights() {
+    for (const gl of (this._groundLights ?? [])) this.scene.remove(gl.light);
+    this._groundLights = [];
+  }
+
   /** Add a temporary point light for discovery effects.
    *  Lights are tracked in _flashLights and faded in render() — no separate rAF loops. */
   addFlash(x, z, color = 0xff8800) {
@@ -522,6 +541,18 @@ export class WorldRenderer {
         fl.t += _dt;
         fl.light.intensity = Math.max(0, 4 - fl.t * 2.5);
         if (fl.light.intensity <= 0) { this.scene.remove(fl.light); return false; }
+        return true;
+      });
+    }
+
+    // Fade ground knowledge lights (slow pulse, then fade into the land)
+    if (this._groundLights?.length) {
+      this._groundLights = this._groundLights.filter(gl => {
+        gl.t += _dt;
+        const frac = gl.t / gl.duration;
+        const pulse = 1.0 + Math.sin(_now * 1.4 + gl.t * 0.5) * 0.12;
+        gl.light.intensity = Math.max(0, gl.peakIntensity * (1 - frac) * pulse);
+        if (gl.t >= gl.duration) { this.scene.remove(gl.light); return false; }
         return true;
       });
     }
@@ -588,43 +619,6 @@ export class WorldRenderer {
       this._sunGroup.position.set(sunX, sunY, sunZ);
       this._sunGroup.children[0].material.opacity = sunVis;
       this._sunGroup.children[1].material.opacity = 0.18 * sunVis;
-    }
-
-    // Northern lights (aurora borealis)
-    const aurora = this._auroraState;
-    if (nightness > 0.75 && aurora.phase === 'hidden' && Math.random() < _dt / 45) {
-      aurora.phase    = 'fadein';
-      aurora.opacity  = 0;
-      aurora.timer    = 0;
-      aurora.duration = 20 + Math.random() * 50;
-    }
-    if (aurora.phase !== 'hidden') {
-      aurora.timer += _dt;
-      if (aurora.phase === 'fadein') {
-        aurora.opacity = Math.min(0.52, aurora.opacity + _dt / 6);
-        if (aurora.opacity >= 0.52) aurora.phase = 'visible';
-      } else if (aurora.phase === 'visible') {
-        if (aurora.timer >= aurora.duration || nightness < 0.5) aurora.phase = 'fadeout';
-      } else if (aurora.phase === 'fadeout') {
-        aurora.opacity = Math.max(0, aurora.opacity - _dt / 8);
-        if (aurora.opacity <= 0) aurora.phase = 'hidden';
-      }
-      // Cloud cover dims the aurora
-      const auroraVis = aurora.opacity * (1 - this._cloudMat.opacity * 0.7);
-      for (const curtain of this._auroraCurtains) {
-        curtain.material.opacity = auroraVis;
-        // Ripple wave along the curtain height
-        const baseX = curtain.geometry.userData.baseX;
-        const pos   = curtain.geometry.attributes.position.array;
-        let bxi = 0;
-        for (let vi = 0; vi < pos.length / 3; vi++) {
-          const localY = pos[vi * 3 + 1];
-          pos[vi * 3] = baseX[bxi++] + Math.sin(_now * curtain.userData.speed + localY * 0.22 + curtain.userData.phase) * 3.5;
-        }
-        curtain.geometry.attributes.position.needsUpdate = true;
-      }
-    } else {
-      for (const curtain of this._auroraCurtains) curtain.material.opacity = 0;
     }
 
     // Clouds: drift across sky, lerp opacity/colour toward weather targets

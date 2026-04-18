@@ -1,6 +1,6 @@
 export const TILE_SIZE = 2;
-export const WORLD_WIDTH = 32;
-export const WORLD_HEIGHT = 32;
+export const WORLD_WIDTH = 64;
+export const WORLD_HEIGHT = 64;
 
 export const TileType = {
   DEEP_WATER: 'DEEP_WATER',
@@ -27,6 +27,12 @@ export class World {
     this.chickenNests = null;
     /** Array of { x, z, milk, milkTimer } — populated by HighlandCowRenderer, positions updated each frame */
     this.cows = [];
+    /** "x,z" → { charge: 0.0–1.0, timer: gameSeconds } — electrically charged tiles after lightning */
+    this.chargedTiles = new Map();
+    /** "x,z" → 'amber' | 'copper_ore' — rare materials that spawn after lightning strikes */
+    this.chargedMaterials = new Map();
+    /** Set of "x,z" keys where lodestone deposits exist (rare stone tiles near mountains) */
+    this.lodestoneDeposits = this._initLodestoneDeposits();
   }
 
   /**
@@ -78,6 +84,56 @@ export class World {
         cow.milkTimer = 30 + Math.random() * 30;
       }
     }
+  }
+
+  /** Electrically charge tiles within radius of a lightning strike. */
+  chargeArea(tx, tz, radius = 2) {
+    for (let dz = -radius; dz <= radius; dz++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const dist = Math.hypot(dx, dz);
+        if (dist > radius) continue;
+        const x = tx + dx, z = tz + dz;
+        const tile = this.getTile(x, z);
+        if (!tile) continue;
+        const key = `${x},${z}`;
+        const prev = this.chargedTiles.get(key);
+        const charge = Math.max(prev?.charge ?? 0, 1.0 - dist / (radius + 1));
+        this.chargedTiles.set(key, { charge, timer: 55 + Math.random() * 50 });
+      }
+    }
+  }
+
+  /** Decay charged tiles over time. Call once per game tick. */
+  updateChargedTiles(delta) {
+    for (const [key, data] of this.chargedTiles) {
+      data.timer -= delta;
+      data.charge = Math.max(0, data.charge - delta * 0.008);
+      if (data.timer <= 0 || data.charge < 0.02) {
+        this.chargedTiles.delete(key);
+        this.chargedMaterials.delete(key); // material can no longer be found once charge fades
+      }
+    }
+  }
+
+  /** Initialise rare lodestone deposits on stone tiles adjacent to mountains. */
+  _initLodestoneDeposits() {
+    const deposits = new Set();
+    for (let z = 0; z < this.height; z++) {
+      for (let x = 0; x < this.width; x++) {
+        if (this.tiles[z][x].type !== TileType.STONE) continue;
+        if (this._rng(x, z, 777) > 0.06) continue; // ~6% of stone tiles
+        const nearMountain = [-1, 0, 1].some(dz =>
+          [-1, 0, 1].some(dx => {
+            if (dx === 0 && dz === 0) return false;
+            const nx = x + dx, nz = z + dz;
+            if (nx < 0 || nx >= this.width || nz < 0 || nz >= this.height) return false;
+            return this.tiles[nz][nx].type === TileType.MOUNTAIN;
+          })
+        );
+        if (nearMountain) deposits.add(`${x},${z}`);
+      }
+    }
+    return deposits;
   }
 
   /** Tick regrowth countdowns. Call once per simulation step with game-time delta. */
@@ -271,6 +327,8 @@ export class World {
     if (!tile) return false;
     if (tile.type === TileType.WATER || tile.type === TileType.DEEP_WATER) return knowledge.has('sailing');
     if (tile.type === TileType.MOUNTAIN) return knowledge.has('mountain_climbing');
+    // Flood disaster: beach tiles become submerged and impassable
+    if (tile.type === TileType.BEACH && this.isBeachFlooded) return knowledge.has('sailing');
     return true;
   }
 
@@ -288,7 +346,10 @@ export class World {
    * Faster in spring/summer, very slow in winter.
    */
   updateResources(delta, season = 'Spring') {
-    const mult = { Spring: 1.5, Summer: 2.0, Autumn: 1.0, Winter: 0.35 }[season] ?? 1.0;
+    const seasonMult = { Spring: 1.5, Summer: 2.0, Autumn: 1.0, Winter: 0.50 }[season] ?? 1.0;
+    // Drought (set by DisasterSystem via world.disasterResourceMult) suppresses regen
+    const disasterMult = this.disasterResourceMult ?? 1.0;
+    const mult = seasonMult * disasterMult;
     for (let z = 0; z < this.height; z++) {
       for (let x = 0; x < this.width; x++) {
         const tile = this.tiles[z][x];

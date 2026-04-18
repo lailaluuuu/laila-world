@@ -80,10 +80,28 @@
       </div>
     </div>
 
+    <div id="stats-panel">
+      <div class="stats-row"><span class="stats-row-label">Population</span><span class="stats-row-value" id="sp-population">—</span></div>
+      <div class="stats-row"><span class="stats-row-label">Day</span><span class="stats-row-value" id="sp-day">—</span></div>
+      <div class="stats-row"><span class="stats-row-label">Time</span><span class="stats-row-value" id="sp-time">—</span></div>
+      <div class="stats-row"><span class="stats-row-label">Season</span><span class="stats-row-value" id="sp-season">—</span></div>
+      <div class="stats-row"><span class="stats-row-label">Weather</span><span class="stats-row-value" id="sp-weather">—</span></div>
+      <div class="stats-row"><span class="stats-row-label">Discoveries</span><span class="stats-row-value" id="sp-discoveries">—</span></div>
+      <div style="margin-top:6px;font-size:10px;opacity:0.3;text-align:right;">M — toggle map</div>
+    </div>
+
+    <div id="disaster-banner" class="hidden">
+      <span id="disaster-text"></span>
+    </div>
+
     <div id="hud-bottom">
       <div id="concepts-panel">
         <div class="panel-title">Discoveries</div>
         <div id="concepts-list"><em>None yet...</em></div>
+      </div>
+      <div id="settlements-panel">
+        <div class="panel-title">Settlements</div>
+        <div id="settlements-list"><em>None yet...</em></div>
       </div>
       <div id="speed-controls">
         <button class="speed-btn" data-speed="0">⏸</button>
@@ -91,6 +109,7 @@
         <button class="speed-btn" data-speed="5">5×</button>
         <button class="speed-btn" data-speed="20">20×</button>
       </div>
+      <button id="place-crow-btn" title="Place crow (click anywhere on the world)">🐦‍⬛ Crow</button>
     </div>
 
     <div id="info-panel" class="hidden">
