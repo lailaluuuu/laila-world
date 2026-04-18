@@ -78,9 +78,9 @@ export class CrowRenderer {
     sphere.dispose();
     cone.dispose();
 
-    // Eyes: very large side eyes with clear white + oversized black pupil.
-    this._EYE_R_OUTER = 0.090;
-    this._EYE_R_PUPIL = 0.070;
+    // Eyes: very large side eyes with huge pupils and a thin white rim.
+    this._EYE_R_OUTER = 0.084;
+    this._EYE_R_PUPIL = 0.068;
     this._eyeRingGeom = new THREE.CircleGeometry(this._EYE_R_OUTER, 40);
     this._pupilDiscGeom = new THREE.CircleGeometry(this._EYE_R_PUPIL, 32);
 
@@ -89,10 +89,12 @@ export class CrowRenderer {
 
     // Legs: very thin, 5-sided (slight angularity), moderately long
     this._legGeom  = new THREE.CylinderGeometry(0.013, 0.011, 0.20, 5);
+    // Feet: visible single triangular foot per leg
+    this._toeGeom = new THREE.ConeGeometry(0.014, 0.060, 3);
 
     this._geoms.push(
       this._bodyGeom, this._headBeakGeom,
-      this._eyeRingGeom, this._pupilDiscGeom, this._wingGeom, this._legGeom,
+      this._eyeRingGeom, this._pupilDiscGeom, this._wingGeom, this._legGeom, this._toeGeom,
     );
   }
 
@@ -111,6 +113,20 @@ export class CrowRenderer {
     legR.position.set( 0.046, 0.10, 0.01);
     legL.castShadow = legR.castShadow = true;
     root.add(legL, legR);
+
+    const buildFoot = (x) => {
+      const foot = new THREE.Group();
+      foot.position.set(x, 0.001, 0.012);
+      const toe = new THREE.Mesh(this._toeGeom, mat);
+      toe.rotation.x = -Math.PI / 2;
+      toe.position.set(0, 0, -0.030);
+      toe.castShadow = true;
+      foot.add(toe);
+      return foot;
+    };
+    const footL = buildFoot(-0.046);
+    const footR = buildFoot(0.046);
+    root.add(footL, footR);
 
     // ── Body cone ─────────────────────────────────────────────────────────
     // Centre at y = 0.32 → base at y = 0.17 (just above leg tops),
@@ -156,8 +172,8 @@ export class CrowRenderer {
     const inset = headR + eyeSurfaceOffset;
     const dirL = new THREE.Vector3(-1, 0.18, -0.16).normalize();
     const dirR = new THREE.Vector3(1, 0.18, -0.16).normalize();
-    const zPupil = -0.0012;
-    const zRing  = 0.0012;
+    const zWhite = 0.0002;
+    const zPupil = 0.0004;
 
     const addEye = (dir) => {
       const g = new THREE.Group();
@@ -166,15 +182,15 @@ export class CrowRenderer {
         new THREE.Vector3(0, 0, 1),
         dir.clone(),
       );
-      const disc = new THREE.Mesh(this._pupilDiscGeom, pupilMat);
-      disc.position.z = zPupil;
-      disc.castShadow = false;
-      disc.renderOrder = 10;
-      const ring = new THREE.Mesh(this._eyeRingGeom, eyeMat);
-      ring.position.z = zRing;
-      ring.castShadow = false;
-      ring.renderOrder = 11;
-      g.add(disc, ring);
+      const white = new THREE.Mesh(this._eyeRingGeom, eyeMat);
+      white.position.z = zWhite;
+      white.castShadow = false;
+      white.renderOrder = 10;
+      const pupil = new THREE.Mesh(this._pupilDiscGeom, pupilMat);
+      pupil.position.z = zPupil;
+      pupil.castShadow = false;
+      pupil.renderOrder = 11;
+      g.add(white, pupil);
       return g;
     };
 
@@ -187,7 +203,7 @@ export class CrowRenderer {
       root, crowSim,
       bodyMesh, headGroup,
       wingGroupL, wingGroupR,
-      legL, legR,
+      legL, legR, footL, footR,
     });
   }
 
@@ -202,7 +218,7 @@ export class CrowRenderer {
       root, crowSim,
       bodyMesh, headGroup,
       wingGroupL, wingGroupR,
-      legL, legR,
+      legL, legR, footL, footR,
     } of this.entries) {
       const tile  = this.world.getTile(Math.floor(crowSim.x), Math.floor(crowSim.z));
       const surfY = tile ? TerrainRenderer.surfaceY(tile.type) : 0.1;
@@ -234,6 +250,7 @@ export class CrowRenderer {
 
         // Retract legs during flight
         legL.visible = legR.visible = false;
+        footL.visible = footR.visible = false;
 
         headGroup.rotation.x = 0;
         bodyMesh.position.y  = 0.32;
@@ -246,6 +263,7 @@ export class CrowRenderer {
 
         root.rotation.x = 0;
         legL.visible = legR.visible = true;
+        footL.visible = footR.visible = true;
 
         if (isHop) {
           // Two-beat hop: body and head lift together
