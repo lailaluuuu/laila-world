@@ -79,8 +79,8 @@ export class CrowRenderer {
     cone.dispose();
 
     // Eyes: very large side eyes with huge pupils and a thin white rim.
-    this._EYE_R_OUTER = 0.084;
-    this._EYE_R_PUPIL = 0.068;
+    this._EYE_R_OUTER = 0.085;
+    this._EYE_R_PUPIL = 0.066;
     this._eyeRingGeom = new THREE.CircleGeometry(this._EYE_R_OUTER, 40);
     this._pupilDiscGeom = new THREE.CircleGeometry(this._EYE_R_PUPIL, 32);
 
@@ -90,7 +90,7 @@ export class CrowRenderer {
     // Legs: very thin, 5-sided (slight angularity), moderately long
     this._legGeom  = new THREE.CylinderGeometry(0.013, 0.011, 0.20, 5);
     // Feet: visible single triangular foot per leg
-    this._toeGeom = new THREE.ConeGeometry(0.014, 0.060, 3);
+    this._toeGeom = new THREE.ConeGeometry(0.022, 0.072, 3);
 
     this._geoms.push(
       this._bodyGeom, this._headBeakGeom,
@@ -116,10 +116,10 @@ export class CrowRenderer {
 
     const buildFoot = (x) => {
       const foot = new THREE.Group();
-      foot.position.set(x, 0.001, 0.012);
+      foot.position.set(x, 0.008, 0.016);
       const toe = new THREE.Mesh(this._toeGeom, mat);
       toe.rotation.x = -Math.PI / 2;
-      toe.position.set(0, 0, -0.030);
+      toe.position.set(0, 0, -0.038);
       toe.castShadow = true;
       foot.add(toe);
       return foot;
