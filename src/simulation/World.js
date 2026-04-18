@@ -38,6 +38,8 @@ export class World {
     this.chargedMaterials = new Map();
     /** Set of "x,z" keys where lodestone deposits exist (rare stone tiles near mountains) */
     this.lodestoneDeposits = this._initLodestoneDeposits();
+    /** Array of river paths, each an array of {x, z} tile coords from source to mouth */
+    this.rivers = this._generateRivers();
   }
 
   /**
@@ -392,6 +394,84 @@ export class World {
     for (const g of this.glacierData.values()) {
       g.melt = Math.max(0, Math.min(1, g.melt + rate * delta));
     }
+  }
+
+  // ── Rivers ───────────────────────────────────────────────────────────
+
+  /**
+   * Generates 2–3 rivers that flow downhill from stone-near-mountain sources
+   * to water or beach tiles. Each river is an array of {x, z} tile coords.
+   * River tiles are tagged with tile.river = true for the renderer.
+   */
+  _generateRivers() {
+    const RIVER_COUNT = 2 + (this._rng(this.seed % 64, 13, 777) < 0.6 ? 1 : 0);
+    const MAX_STEPS   = 55;
+    const MIN_LENGTH  = 8;
+    const rivers = [];
+
+    // Stone tiles adjacent to a mountain are good river sources
+    const sources = [];
+    for (let z = 4; z < this.height - 4; z++) {
+      for (let x = 4; x < this.width - 4; x++) {
+        if (this.tiles[z][x].type !== TileType.STONE) continue;
+        const nearMtn = [[-1,0],[1,0],[0,-1],[0,1]].some(([dx, dz]) => {
+          const t = this.getTile(x + dx, z + dz);
+          return t?.type === TileType.MOUNTAIN;
+        });
+        if (nearMtn) sources.push({ x, z });
+      }
+    }
+
+    // Deterministic shuffle
+    sources.sort((a, b) => this._rng(a.x, a.z, 321) - this._rng(b.x, b.z, 321));
+
+    for (const src of sources) {
+      if (rivers.length >= RIVER_COUNT) break;
+      // Keep sources well separated so rivers don't overlap
+      if (rivers.some(r => Math.hypot(r[0].x - src.x, r[0].z - src.z) < 12)) continue;
+
+      const path = [];
+      let cx = src.x, cz = src.z;
+      const visited = new Set();
+
+      for (let step = 0; step < MAX_STEPS; step++) {
+        const key = `${cx},${cz}`;
+        if (visited.has(key)) break;
+        visited.add(key);
+        path.push({ x: cx, z: cz });
+
+        const tile = this.getTile(cx, cz);
+        if (!tile) break;
+        if (tile.type === TileType.WATER || tile.type === TileType.DEEP_WATER) break;
+        if (tile.type === TileType.BEACH) break; // close enough to water
+
+        // Pick the lowest-noise unvisited neighbour (= downhill); randomise tie-break order
+        const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+        dirs.sort((a, b) =>
+          this._rng(cx + a[0], cz + a[1], step * 7)     - this._rng(cx + b[0], cz + b[1], step * 7)
+        );
+        let bestX = -1, bestZ = -1, bestN = Infinity;
+        for (const [dx, dz] of dirs) {
+          const nx = cx + dx, nz = cz + dz;
+          if (nx < 0 || nx >= this.width || nz < 0 || nz >= this.height) continue;
+          if (visited.has(`${nx},${nz}`)) continue;
+          const n = this._noise(nx, nz);
+          if (n < bestN) { bestN = n; bestX = nx; bestZ = nz; }
+        }
+        if (bestX === -1) break;
+        cx = bestX; cz = bestZ;
+      }
+
+      if (path.length >= MIN_LENGTH) {
+        for (const { x, z } of path) {
+          const t = this.getTile(x, z);
+          if (t && t.type !== TileType.WATER && t.type !== TileType.DEEP_WATER) t.river = true;
+        }
+        rivers.push(path);
+      }
+    }
+
+    return rivers;
   }
 
   // ── Queries ───────────────────────────────────────────────────────────

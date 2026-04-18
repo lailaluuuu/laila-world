@@ -32,6 +32,29 @@ const TILE_COLOR_HSL = {
 
 const GAP = 0.08; // gap between tiles
 
+/** Rolling-hill strength per tile type for smooth terrain topology (mesh + river ribbons stay in sync). */
+const TERRAIN_TOPOLOGY_HILL_AMP = {
+  [TileType.DEEP_WATER]: 0,
+  [TileType.WATER]:      0,
+  [TileType.BEACH]:      0.04,
+  [TileType.GRASS]:      0.30,
+  [TileType.WOODLAND]:   0.32,
+  [TileType.FOREST]:     0.26,
+  [TileType.DESERT]:     0.18,
+  [TileType.STONE]:      0.12,
+  [TileType.MOUNTAIN]:   0,
+};
+
+/** Multi-octave smooth noise for terrain topology; range ≈ [-1, 1]. */
+function terrainTopologyHillNoise(wx, wz, seed) {
+  const s = seed * 0.137;
+  return (
+    Math.sin(wx * 0.09 + s * 1.30) * Math.cos(wz * 0.07 + s * 0.90) * 0.50 +
+    Math.sin(wx * 0.18 + s * 0.60) * Math.cos(wz * 0.14 + s * 1.40) * 0.30 +
+    Math.sin(wx * 0.35 + s * 1.70) * Math.cos(wz * 0.29 + s * 0.50) * 0.20
+  );
+}
+
 export class TerrainRenderer {
   constructor(scene, world) {
     this.scene = scene;
@@ -94,24 +117,32 @@ export class TerrainRenderer {
     }
 
     for (const [type, tiles] of Object.entries(buckets)) {
-      if (tiles.length === 0) continue;
+      // Smooth terrain mesh handles all ground and water tiles.
+      // Only render instanced geometry for mountain cones and elevated (layer=1) stone platforms.
+      let renderTiles = tiles;
+      if (type === TileType.STONE) {
+        renderTiles = tiles.filter(t => (t.layer ?? 0) === 1);
+      } else if (type !== TileType.MOUNTAIN) {
+        continue; // handled by _buildTerrainMesh / _buildWaterSurface
+      }
+      if (renderTiles.length === 0) continue;
 
       const baseH = TILE_HEIGHT[type];
       const [h, s, l] = TILE_COLOR_HSL[type];
       const isMountain = type === TileType.MOUNTAIN;
 
-      // Mountains use tapered cones for a peak shape; other tiles use boxes
+      // Mountains use tapered cones for a peak shape; elevated stone uses boxes
       const geom = isMountain
         ? new THREE.ConeGeometry(0.92, 1.5, 8)
         : new THREE.BoxGeometry(TILE_SIZE - GAP, 1, TILE_SIZE - GAP);
       const mat  = new THREE.MeshLambertMaterial();
-      const mesh = new THREE.InstancedMesh(geom, mat, tiles.length);
+      const mesh = new THREE.InstancedMesh(geom, mat, renderTiles.length);
       mesh.receiveShadow = true;
 
       const dummy = new THREE.Object3D();
       const color = new THREE.Color();
 
-      tiles.forEach((tile, i) => {
+      renderTiles.forEach((tile, i) => {
         const hVariation = baseH + tile.elevation * 0.08;
         const lVariation = l + (Math.sin(tile.x * 3.1 + tile.z * 2.7) * 0.5 + 0.5) * 6 - 3;
         const layerOffset = (tile.layer ?? 0) === 1 ? ELEVATED_HEIGHT : 0;
@@ -150,6 +181,8 @@ export class TerrainRenderer {
       this._meshes.push(mesh);
     }
 
+    this._buildTerrainMesh();
+    this._buildRivers();
     this._buildVegetation(buckets);
     this._buildAnimals(buckets);
     this._buildGlaciers(buckets[TileType.STONE], buckets[TileType.MOUNTAIN]);
@@ -3401,6 +3434,154 @@ export class TerrainRenderer {
     if (typeof typeOrTile === 'string') return TILE_HEIGHT[typeOrTile] ?? 0.14;
     if (!typeOrTile || typeof typeOrTile !== 'object') return 0.14;
     return (TILE_HEIGHT[typeOrTile.type] ?? 0.14) + ((typeOrTile.layer ?? 0) === 1 ? ELEVATED_HEIGHT : 0);
+  }
+
+  // ── Rivers ────────────────────────────────────────────────────────────
+
+  /**
+   * Renders each river path from world.rivers as a semi-transparent blue ribbon
+   * that follows the rolling terrain surface.
+   */
+  _buildRivers() {
+    if (!this.world.rivers?.length) return;
+
+    const seed = this.world.seed;
+    const tileY = (tile) => {
+      const wx = tile.x * TILE_SIZE + TILE_SIZE / 2;
+      const wz = tile.z * TILE_SIZE + TILE_SIZE / 2;
+      return TILE_HEIGHT[tile.type] + tile.elevation * 0.08
+           + terrainTopologyHillNoise(wx, wz, seed) * (TERRAIN_TOPOLOGY_HILL_AMP[tile.type] ?? 0)
+           + 0.022; // just above terrain surface
+    };
+
+    const HALF_W     = TILE_SIZE * 0.28;
+    const riverColor = new THREE.Color().setHSL(208 / 360, 0.78, 0.52);
+
+    for (const river of this.world.rivers) {
+      if (river.length < 2) continue;
+
+      const verts = [];
+      const idxs  = [];
+
+      for (let i = 0; i < river.length; i++) {
+        const { x, z } = river[i];
+        const tile = this.world.tiles[z][x];
+        const cx = x * TILE_SIZE + TILE_SIZE / 2;
+        const cz = z * TILE_SIZE + TILE_SIZE / 2;
+        const cy = tileY(tile);
+
+        // Tangent along path direction
+        const prev = river[Math.max(0, i - 1)];
+        const next = river[Math.min(river.length - 1, i + 1)];
+        let tx = next.x - prev.x, tz_dir = next.z - prev.z;
+        const tlen = Math.hypot(tx, tz_dir) || 1;
+        tx /= tlen; tz_dir /= tlen;
+
+        // Perpendicular (right-hand normal in XZ plane)
+        const px = -tz_dir, pz = tx;
+
+        verts.push(
+          cx + px * HALF_W, cy, cz + pz * HALF_W,  // right edge
+          cx - px * HALF_W, cy, cz - pz * HALF_W,  // left edge
+        );
+
+        if (i > 0) {
+          const b = (i - 1) * 2;
+          idxs.push(b, b + 2, b + 1,  b + 1, b + 2, b + 3);
+        }
+      }
+
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+      geom.setIndex(idxs);
+      geom.computeVertexNormals();
+
+      const mat  = new THREE.MeshLambertMaterial({
+        color: riverColor, transparent: true, opacity: 0.84, depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.renderOrder = 1;
+      this.scene.add(mesh);
+      this._meshes.push(mesh);
+    }
+  }
+
+  // ── Smooth topology terrain mesh ──────────────────────────────────────
+
+  /**
+   * Builds a single continuous heightmap mesh that replaces the flat per-type boxes.
+   * Vertices sit at tile corners (65×65 for a 64×64 world); height at each corner is
+   * the weighted average of up to four adjacent tile surfaces.  Mountains contribute
+   * at stone level so the cone geometry still reads correctly at y≈0.
+   * Vertex colours are blended from adjacent tile HSL values.
+   */
+  _buildTerrainMesh() {
+    const W  = this.world.width;   // 64
+    const H  = this.world.height;  // 64
+    const NX = W + 1;              // vertices along x
+    const NZ = H + 1;              // vertices along z
+    const seed = this.world.seed;
+
+    const positions = new Float32Array(NX * NZ * 3);
+    const colors    = new Float32Array(NX * NZ * 3);
+    const indices   = [];
+    const tmpColor  = new THREE.Color();
+
+    for (let iz = 0; iz < NZ; iz++) {
+      for (let ix = 0; ix < NX; ix++) {
+        // Up to four tile neighbours that share this corner
+        let totalH = 0, totalAmp = 0, totalR = 0, totalG = 0, totalB = 0, count = 0;
+        for (const [tx, tz] of [[ix - 1, iz - 1], [ix, iz - 1], [ix - 1, iz], [ix, iz]]) {
+          if (tx < 0 || tx >= W || tz < 0 || tz >= H) continue;
+          const tile = this.world.tiles[tz][tx];
+          // Mountains: use stone height so cones sit naturally at y≈0
+          const isMtn = tile.type === TileType.MOUNTAIN;
+          const h = isMtn
+            ? TILE_HEIGHT[TileType.STONE]
+            : TILE_HEIGHT[tile.type] + tile.elevation * 0.08;
+          totalH   += h;
+          totalAmp += TERRAIN_TOPOLOGY_HILL_AMP[tile.type] ?? 0;
+          const [hue, sat, lit] = TILE_COLOR_HSL[isMtn ? TileType.STONE : tile.type];
+          const litVar = lit + (Math.sin(tx * 3.1 + tz * 2.7) * 0.5 + 0.5) * 6 - 3;
+          tmpColor.setHSL(hue / 360, sat / 100, Math.max(0.05, Math.min(0.95, litVar / 100)));
+          totalR += tmpColor.r; totalG += tmpColor.g; totalB += tmpColor.b;
+          count++;
+        }
+        if (count === 0) { totalH = 0.14; totalR = totalG = totalB = 0.5; count = 1; }
+
+        const wx = ix * TILE_SIZE, wz = iz * TILE_SIZE;
+        const hillH = terrainTopologyHillNoise(wx, wz, seed) * (totalAmp / count);
+
+        const vi = iz * NX + ix;
+        positions[vi * 3]     = wx;
+        positions[vi * 3 + 1] = totalH / count + hillH;
+        positions[vi * 3 + 2] = wz;
+        colors[vi * 3]     = totalR / count;
+        colors[vi * 3 + 1] = totalG / count;
+        colors[vi * 3 + 2] = totalB / count;
+      }
+    }
+
+    // Two triangles per cell (CCW so normals face up)
+    for (let iz = 0; iz < H; iz++) {
+      for (let ix = 0; ix < W; ix++) {
+        const a = iz * NX + ix, b = a + 1, c = a + NX, d = c + 1;
+        indices.push(a, c, b,  b, c, d);
+      }
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom.setAttribute('color',    new THREE.BufferAttribute(colors, 3));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+
+    const mat  = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.name = 'terrainTopology';
+    mesh.receiveShadow = true;
+    this.scene.add(mesh);
+    this._meshes.push(mesh);
   }
 
   // ── Elevated cliff walls ───────────────────────────────────────────────
