@@ -32,6 +32,7 @@ export class LilyPadRenderer {
 
   _build() {
     const { world } = this;
+    let padCount = 0;
 
     // Shared geometries — instancing per size/flower variant
     const PAD_SEGS = 14;
@@ -75,6 +76,7 @@ export class LilyPadRenderer {
           pad.position.set(px, surfY, pz);
           pad.receiveShadow = true;
           this._group.add(pad);
+          padCount++;
 
           // Notch hint (very dark tiny circle at edge to suggest the V-cut)
           const notchMat = new THREE.MeshLambertMaterial({ color: 0x1a3a18, side: THREE.DoubleSide });
@@ -107,6 +109,9 @@ export class LilyPadRenderer {
           }
         }
       }
+    }
+    if (globalThis.localStorage?.getItem('debugWorldLogs') === '1') {
+      console.debug('[DebugWorld] lilypads:built', { pads: padCount });
     }
   }
 
