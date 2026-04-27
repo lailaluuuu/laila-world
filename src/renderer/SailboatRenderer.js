@@ -1,3 +1,4 @@
+// Sailboat rendering module
 /**
  * SailboatRenderer — Monument Valley-style wooden sailboats.
  *
@@ -10,7 +11,7 @@
  *   Wake   — two fanning triangles behind the stern, pale teal
  */
 import * as THREE from 'three';
-import { TILE_SIZE } from '../simulation/World.js';
+import { TILE_SIZE, TileType } from '../simulation/World.js';
 import { TerrainRenderer } from './TerrainRenderer.js';
 
 const HULL_COLOR    = 0xc07828;   // warm amber wood
@@ -179,7 +180,7 @@ export class SailboatRenderer {
       // World position — boats float at water surface height
       const wx = boat.x * TILE_SIZE;
       const wz = boat.z * TILE_SIZE;
-      const surfY = TerrainRenderer.getHeightAt(wx, wz);
+      const surfY = TerrainRenderer.surfaceY(TileType.WATER);
 
       // Gentle bob: vertical + slight roll
       const bob  = Math.sin(boat.bobPhase) * 0.018;

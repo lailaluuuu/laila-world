@@ -37,7 +37,8 @@ export class Agent {
     this.needs = { hunger: 0.8 + Math.random() * 0.2, energy: 0.8 + Math.random() * 0.2, vitality: 1.0 };
 
     this.state = AgentState.WANDERING;
-    this.knowledge = new Set(['dairy', 'animal_domestication']);   // set of concept IDs
+    this.knowledge = new Set(['dairy', 'animal_domestication', 'stone_tools', 'shelter', 'weaving', 'woodcutting', 'rope', 'housing', 'ladder_building']);   // set of concept IDs
+    this.knowledgeExpiry = new Map(); // conceptId → game-seconds until forgotten (starting knowledge has no entry)
 
     this.curiosity       = 0.3 + Math.random() * 0.5;
     this.sociability     = 0.3 + Math.random() * 0.5; // tendency to seek others
@@ -209,6 +210,15 @@ export class Agent {
     }
     if (this.discoveryFlash > 0) this.discoveryFlash -= delta;
     if (this._fireCooldown > 0) this._fireCooldown -= delta;
+    for (const [id, ttl] of this.knowledgeExpiry) {
+      const remaining = ttl - delta;
+      if (remaining <= 0) {
+        this.knowledgeExpiry.delete(id);
+        this.knowledge.delete(id);
+      } else {
+        this.knowledgeExpiry.set(id, remaining);
+      }
+    }
     if (this.speechBubbleTimer > 0) {
       this.speechBubbleTimer -= delta;
       if (this.speechBubbleTimer <= 0) this.speechBubble = null;
@@ -326,6 +336,7 @@ export class Agent {
         this._decideAction(world, allAgents); // hunger/tiredness can cut grazing short
       }
       this._trySocialise(delta, allAgents, conceptGraph);
+      this._tryDiscover(delta, world, conceptGraph, allAgents);
       return;
     }
 
@@ -1015,8 +1026,14 @@ export class Agent {
     if (this.socialTimer > 0) return;
     this.socialTimer = SOCIAL_COOLDOWN + Math.random() * 2;
 
-    for (const other of allAgents) {
+    // Sample at most 12 agents from a random offset to keep this O(1) regardless of population
+    const n = allAgents.length;
+    const startIdx = Math.floor(Math.random() * n);
+    let checked = 0;
+    for (let j = 0; j < n && checked < 12; j++) {
+      const other = allAgents[(startIdx + j) % n];
       if (other === this || other.health <= 0) continue;
+      checked++;
       const dist = Math.hypot(this.x - other.x, this.z - other.z);
       if (dist < 5.0) {
         // Performers spread knowledge faster to nearby listeners

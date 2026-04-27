@@ -87,9 +87,7 @@ export class TerrainRenderer {
     if (this._ladderMeshes) {
       for (const m of this._ladderMeshes) {
         this.scene.remove(m);
-        m.geometry?.dispose();
-        if (Array.isArray(m.material)) m.material.forEach(mat => mat.dispose());
-        else m.material?.dispose();
+        m.traverse(child => { child.geometry?.dispose(); child.material?.dispose(); });
       }
       this._ladderMeshes = [];
     }
@@ -3664,7 +3662,7 @@ export class TerrainRenderer {
     const dx = toX - fromX; // ±1 or 0
     const dz = toZ - fromZ; // ±1 or 0
 
-    // Position the ladder at the tile boundary, on the ground-tile face of the cliff
+    // Position at the tile boundary on the cliff face
     let cx, cz;
     if (dx !== 0) {
       cx = Math.max(fromX, toX) * TILE_SIZE;
@@ -3674,40 +3672,46 @@ export class TerrainRenderer {
       cz = Math.max(fromZ, toZ) * TILE_SIZE;
     }
 
-    const ladderH    = ELEVATED_HEIGHT + 0.3; // leaning slightly past the cliff top
-    const poleOffset = 0.13;
-    const poleMat    = new THREE.MeshLambertMaterial({ color: 0x8b5a2b });
-    const rungMat    = new THREE.MeshLambertMaterial({ color: 0x7a4f3a });
+    const ladderH    = ELEVATED_HEIGHT + 0.35;
+    const poleSpread = 0.22; // half-gap between rails
+    const rungCount  = 8;
 
-    // Perpendicular direction (poles are spaced along this axis)
-    const perpX = Math.abs(dz); // 0 when dx-facing, 1 when dz-facing
-    const perpZ = Math.abs(dx); // 1 when dx-facing, 0 when dz-facing
+    const poleMat = new THREE.MeshLambertMaterial({ color: 0x8b5e2b });
+    const rungMat = new THREE.MeshLambertMaterial({ color: 0xa06830 });
+    const poleGeom = new THREE.CylinderGeometry(0.034, 0.042, ladderH, 6);
+    const rungGeom = new THREE.CylinderGeometry(0.022, 0.022, poleSpread * 2 + 0.04, 6);
 
-    // Poles
-    const poleGeom = new THREE.CylinderGeometry(0.032, 0.040, ladderH, 4);
+    // Width axis is perpendicular to the cliff face direction
+    const perpX = dz !== 0 ? 1 : 0;
+    const perpZ = dx !== 0 ? 1 : 0;
+
+    const group = new THREE.Group();
+
+    // Two side rails
     for (const side of [-1, 1]) {
       const pole = new THREE.Mesh(poleGeom, poleMat);
-      pole.position.set(
-        cx + perpX * poleOffset * side,
-        ladderH / 2,
-        cz + perpZ * poleOffset * side,
-      );
+      pole.position.set(perpX * poleSpread * side, ladderH / 2, perpZ * poleSpread * side);
       pole.castShadow = true;
-      this.scene.add(pole);
-      this._ladderMeshes.push(pole);
+      group.add(pole);
     }
 
-    // Rungs — extend in the perpendicular direction between poles
-    const rungCount = 5;
-    const rungGeom  = dx !== 0
-      ? new THREE.BoxGeometry(0.05, 0.04, poleOffset * 2 + 0.02) // X-facing ladder: rungs along Z
-      : new THREE.BoxGeometry(poleOffset * 2 + 0.02, 0.04, 0.05); // Z-facing ladder: rungs along X
+    // Horizontal rungs — cylinders rotated to span between the rails
     for (let k = 1; k <= rungCount; k++) {
       const rung = new THREE.Mesh(rungGeom, rungMat);
-      rung.position.set(cx, ladderH * k / (rungCount + 1), cz);
+      rung.position.y = ladderH * k / (rungCount + 1);
+      if (perpX) rung.rotation.z = Math.PI / 2; // rung lies along X
+      else       rung.rotation.x = Math.PI / 2; // rung lies along Z
       rung.castShadow = true;
-      this.scene.add(rung);
-      this._ladderMeshes.push(rung);
+      group.add(rung);
     }
+
+    // Lean slightly away from the cliff (toward the lower ground)
+    const lean = 0.10;
+    if (dx !== 0) group.rotation.z = -Math.sign(dx) * lean;
+    else          group.rotation.x =  Math.sign(dz) * lean;
+
+    group.position.set(cx, 0, cz);
+    this.scene.add(group);
+    this._ladderMeshes.push(group);
   }
 }

@@ -157,6 +157,7 @@ export class ConceptGraph {
 
   _grant(agent, conceptId) {
     agent.knowledge.add(conceptId);
+    agent.knowledgeExpiry.set(conceptId, 300 + Math.random() * 120); // forget after ~5–7 game-minutes
     this.knownBy.get(conceptId)?.add(agent.id);
   }
 
