@@ -22,12 +22,14 @@ import { Deer }                 from './simulation/Deer.js';
 import { DeerRenderer }         from './renderer/DeerRenderer.js';
 import { Crow }                 from './simulation/Crow.js';
 import { CrowRenderer }         from './renderer/CrowRenderer.js';
+import { SailboatRenderer }     from './renderer/SailboatRenderer.js';
 import { TimeSystem }        from './systems/TimeSystem.js';
 import { WeatherSystem }     from './systems/WeatherSystem.js';
 import { SettlementSystem, TIER_ICONS } from './systems/SettlementSystem.js';
 import { DisasterSystem }    from './systems/DisasterSystem.js';
 
 const AGENT_COUNT = 12;
+// Keep wildlife spawn counts modest to avoid heavy startup load.
 const WILD_HORSE_COUNT = 4;
 const FOX_COUNT = 6;
 const DEER_COUNT = 5;
@@ -92,6 +94,8 @@ async function init() {
   let deerRenderer;
   let crows = [];
   let crowRenderer;
+  let boats = [];
+  let sailboatRenderer;
   let minimap;
   try {
   world = new World();
@@ -121,6 +125,8 @@ async function init() {
   deerRenderer = new DeerRenderer(wr.scene, deer, world);
   crows = world.getWildHorseSpawnPoints(CROW_COUNT).map(p => new Crow(p.x, p.z));
   crowRenderer = new CrowRenderer(wr.scene, crows, world);
+  boats = [];
+  sailboatRenderer = new SailboatRenderer(wr.scene, boats);
   minimap = new MinimapRenderer(world);
 
   time = new TimeSystem();
@@ -214,6 +220,56 @@ async function init() {
     }
   });
 
+  function _spawnSailboats(count) {
+    const waterTiles = [];
+    for (let z = 0; z < 64; z++) {
+      for (let x = 0; x < 64; x++) {
+        const t = world.getTile(x, z);
+        if (t?.type === TileType.WATER) waterTiles.push({ x, z });
+      }
+    }
+    if (!waterTiles.length) return;
+    for (let i = 0; i < count; i++) {
+      const tile = waterTiles[Math.floor(Math.random() * waterTiles.length)];
+      const angle = Math.random() * Math.PI * 2;
+      const boat = {
+        x: tile.x + 0.5, z: tile.z + 0.5,
+        facingX: Math.sin(angle), facingZ: Math.cos(angle),
+        speed: 0.4 + Math.random() * 0.3,
+        bobPhase: Math.random() * Math.PI * 2,
+        sailPhase: Math.random() * Math.PI * 2,
+        _wanderAngle: angle, _wanderTimer: 0,
+      };
+      boats.push(boat);
+      sailboatRenderer.addBoat(boat);
+    }
+  }
+
+  function _updateBoats(delta) {
+    for (const b of boats) {
+      b.bobPhase  += delta * 1.2;
+      b.sailPhase += delta * 0.8;
+      b._wanderTimer -= delta;
+      if (b._wanderTimer <= 0) {
+        b._wanderAngle += (Math.random() - 0.5) * 1.2;
+        b._wanderTimer = 4 + Math.random() * 5;
+        b.facingX = Math.sin(b._wanderAngle);
+        b.facingZ = Math.cos(b._wanderAngle);
+      }
+      const nx = b.x + b.facingX * b.speed * delta;
+      const nz = b.z + b.facingZ * b.speed * delta;
+      const tile = world.getTile(Math.floor(nx), Math.floor(nz));
+      if (tile && (tile.type === TileType.WATER || tile.type === TileType.DEEP_WATER)) {
+        b.x = nx; b.z = nz;
+      } else {
+        b._wanderAngle += Math.PI + (Math.random() - 0.5) * 0.5;
+        b.facingX = Math.sin(b._wanderAngle);
+        b.facingZ = Math.cos(b._wanderAngle);
+        b._wanderTimer = 2 + Math.random() * 3;
+      }
+    }
+  }
+
   function resetWorld() {
     try {
     terrainRenderer.dispose();
@@ -228,6 +284,8 @@ async function init() {
     eagleRenderer.dispose();
     foxRenderer.dispose();
     deerRenderer.dispose();
+    crowRenderer.dispose();
+    sailboatRenderer.dispose();
     minimap.destroy();
     buildingRenderer.dispose();
 
@@ -259,6 +317,12 @@ async function init() {
     deer.length = 0;
     world.getWildHorseSpawnPoints(DEER_COUNT).forEach(p => deer.push(new Deer(p.x, p.z)));
     deerRenderer = new DeerRenderer(wr.scene, deer, world);
+    crows.length = 0;
+    world.getWildHorseSpawnPoints(CROW_COUNT).forEach(p => crows.push(new Crow(p.x, p.z)));
+    crowRenderer = new CrowRenderer(wr.scene, crows, world);
+    setCrowPlacementMode(false);
+    boats.length = 0;
+    sailboatRenderer = new SailboatRenderer(wr.scene, boats);
     minimap = new MinimapRenderer(world);
     buildingRenderer = new BuildingRenderer(wr.scene, world);
 
@@ -282,6 +346,9 @@ async function init() {
     if (selectedAgent) selectedAgent.selected = false;
     selectedAgent = null;
     selectedTile  = null;
+    _agentPruneTimer = 0;
+    _cachedCarryingCapacity = 40;
+    _carryingCapacityTimer = 0;
     document.getElementById('info-panel').classList.add('hidden');
     document.getElementById('game-over').classList.add('hidden');
     settingsPanel.classList.add('hidden');
@@ -323,6 +390,8 @@ async function init() {
 
   canvas.addEventListener('mousedown', e => {
     mouseDownAt = { x: e.clientX, y: e.clientY };
+
+    if (crowPlacementMode) return; // don't start drags while placing crows
 
     // Check if the player is clicking near an agent or horse to pick up
     const ndc = wr.getNDC(e);
@@ -401,6 +470,7 @@ async function init() {
       const cx = groundPoint.x / TILE_SIZE;
       const cz = groundPoint.z / TILE_SIZE;
       const newCrow = new Crow(cx, cz);
+      crows.push(newCrow);
       crowRenderer.addCrow(newCrow);
       return;
     }
@@ -478,10 +548,7 @@ async function init() {
     const aliveAgents = agents.filter(a => a?.health > 0);
     const alive = aliveAgents.length;
     const aliveIds = new Set(aliveAgents.map(a => a.id));
-    const hasAgriculture = aliveAgents.some(a => a.knowledge.has('agriculture'));
-    const maxPop = Number(maxPopSlider?.value ?? 100);
-    const carryingCapacity = Math.min(maxPop, Math.floor(world.getCarryingCapacity() * (hasAgriculture ? 1.25 : 1)));
-    document.getElementById('population').textContent = `${alive} / ${carryingCapacity}`;
+    document.getElementById('population').textContent = `${alive} / ${_cachedCarryingCapacity}`;
     const femaleCount = aliveAgents.filter(a => a.gender === 'female').length;
     const maleCount = alive - femaleCount;
     document.getElementById('pop-female').textContent = `♀ ${femaleCount}`;
@@ -776,6 +843,9 @@ async function init() {
 
   // ── Game loop ──────────────────────────────────────────────────────────
   let lastTimestamp = null;
+  let _agentPruneTimer = 0;
+  let _cachedCarryingCapacity = 40;
+  let _carryingCapacityTimer = 0;
 
   function frame(timestamp) {
     requestAnimationFrame(frame);
@@ -907,6 +977,30 @@ async function init() {
         world.campfireEvents.length = 0;
       }
 
+      // Prune dead agents from the array every 15 real-seconds to keep O(n) loops lean
+      _agentPruneTimer += realDelta;
+      if (_agentPruneTimer >= 15) {
+        _agentPruneTimer = 0;
+        for (let i = agents.length - 1; i >= 0; i--) {
+          if (agents[i].health <= 0) {
+            if (selectedAgent === agents[i]) {
+              selectedAgent = null;
+              document.getElementById('info-panel').classList.add('hidden');
+            }
+            agents.splice(i, 1);
+          }
+        }
+      }
+
+      // Cache carrying capacity — world tile counts don't change frequently
+      _carryingCapacityTimer -= delta;
+      if (_carryingCapacityTimer <= 0) {
+        const _hasAg = agents.some(a => a.health > 0 && a.knowledge.has('agriculture'));
+        const _maxPop = Number(maxPopSlider?.value ?? 100);
+        _cachedCarryingCapacity = Math.min(_maxPop, Math.floor(world.getCarryingCapacity() * (_hasAg ? 1.25 : 1)));
+        _carryingCapacityTimer = 10; // recalculate every 10 game-seconds
+      }
+
       const wMult = weather.energyDrainMult;
       for (const h of horses) h.tick(delta, world, horses);
       for (const f of foxes) f.tick(delta, world, agents);
@@ -995,6 +1089,9 @@ async function init() {
             const wz = agent.z * TILE_SIZE;
             wr.addFlash(wx, wz, 0xff8800);
           }
+          if (evt.conceptId === 'sailing') {
+            _spawnSailboats(3);
+          }
           if (evt.conceptId === 'static') {
             showNotification(`${evt.agentName} felt something strange — invisible fire between their skin and the world. ✨`, 'social');
           }
@@ -1009,13 +1106,12 @@ async function init() {
         // Spread events are silent (too frequent to notify)
       }
 
-      // Handle births
-      const hasAgriculture = agents.some(a => a.health > 0 && a.knowledge.has('agriculture'));
-      const maxPop = Number(maxPopSlider?.value ?? 100);
-      const carryingCapacity = Math.min(maxPop, Math.floor(world.getCarryingCapacity() * (hasAgriculture ? 1.25 : 1)));
-      for (const evt of conceptGraph.drainBirthEvents()) {
-        const alive = agents.filter(a => a.health > 0).length;
-        if (alive >= carryingCapacity) continue;
+      // Handle births — use cached capacity; count alive once outside the loop
+      const birthEvents = conceptGraph.drainBirthEvents();
+      if (birthEvents.length > 0) {
+        let alive = agents.reduce((n, a) => n + (a.health > 0 ? 1 : 0), 0);
+        for (const evt of birthEvents) {
+        if (alive >= _cachedCarryingCapacity) continue;
 
         // Find a walkable spawn tile near the birth position
         let bx = evt.x, bz = evt.z;
@@ -1035,7 +1131,9 @@ async function init() {
         agents.push(child);
         ar.addAgent(child);
         birthGameTimes.push(time.gameTime);
+        alive++;
         showNotification(`${evt.parentName} has a child — ${child.name}`, 'social');
+        }
       }
 
 
@@ -1057,6 +1155,7 @@ async function init() {
     foxRenderer.update();
     deerRenderer.update();
     crowRenderer.update(delta > 0 ? delta : 0);
+    if (boats.length) { _updateBoats(delta > 0 ? delta : 0); sailboatRenderer.update(); }
     butterflyRenderer.update(delta > 0 ? delta : 0, weather.current === 'CLEAR');
     beeRenderer.update(delta > 0 ? delta : 0, weather.current === 'CLEAR');
     sheepRenderer.update(delta > 0 ? delta : 0);
