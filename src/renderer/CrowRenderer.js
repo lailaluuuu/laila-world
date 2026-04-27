@@ -21,10 +21,12 @@ const EYE_COLOR   = 0xffffff;  // white sclera
 const PUPIL_COLOR = 0x060608;  // near-black pupil
 
 export class CrowRenderer {
-  constructor(scene, crows, world) {
-    this.scene   = scene;
-    this.crows   = crows;
-    this.world   = world;
+  constructor(scene, crows, world, audio = null) {
+    this.scene        = scene;
+    this.crows        = crows;
+    this.world        = world;
+    this._audio       = audio;
+    this._playerCrow  = null;
     this.entries = [];
     this._geoms  = [];
     this._mats   = [];
@@ -32,6 +34,10 @@ export class CrowRenderer {
     this._eyeMat = null;
     this._initGeoms();
     for (const c of this.crows) this._buildEntry(c);
+  }
+
+  setPlayerCrow(crowSim) {
+    this._playerCrow = crowSim;
   }
 
   _initGeoms() {

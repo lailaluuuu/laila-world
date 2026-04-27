@@ -27,6 +27,7 @@ import { TimeSystem }        from './systems/TimeSystem.js';
 import { WeatherSystem }     from './systems/WeatherSystem.js';
 import { SettlementSystem, TIER_ICONS } from './systems/SettlementSystem.js';
 import { DisasterSystem }    from './systems/DisasterSystem.js';
+import { AudioSystem }       from './audio/AudioSystem.js';
 
 const AGENT_COUNT = 12;
 // Keep wildlife spawn counts modest to avoid heavy startup load.
@@ -124,7 +125,8 @@ async function init() {
   deer = world.getWildHorseSpawnPoints(DEER_COUNT).map(p => new Deer(p.x, p.z));
   deerRenderer = new DeerRenderer(wr.scene, deer, world);
   crows = world.getWildHorseSpawnPoints(CROW_COUNT).map(p => new Crow(p.x, p.z));
-  crowRenderer = new CrowRenderer(wr.scene, crows, world);
+  const audio = new AudioSystem();
+  crowRenderer = new CrowRenderer(wr.scene, crows, world, audio);
   boats = [];
   sailboatRenderer = new SailboatRenderer(wr.scene, boats);
   minimap = new MinimapRenderer(world);
@@ -155,6 +157,76 @@ async function init() {
   let gameOver = false;
   let crowPlacementMode = false;
   let gameOverAutoResetId = null;
+
+  // ── Crow possession mode ──────────────────────────────────────────────────
+  const CROW_HOP_SPEED  = 0.85;
+  const CROW_FLY_SPEED  = 4.0;
+  const CROW_FLY_HEIGHT = 4.5;
+  const CROW_CAM_DIST   = 2.2;
+  const CROW_CAM_HEIGHT = 0.5;
+
+  let controlledCrow = null;
+  let crowCamYaw     = 0;
+  let crowCamPitch   = 0.2;
+  let crowSpaceWas   = false;
+  const crowKeys = { w: false, a: false, s: false, d: false, space: false };
+
+  function enterCrowMode(crow) {
+    if (controlledCrow) exitCrowMode();
+    controlledCrow = crow;
+    audio.startMusic();
+    crowRenderer.setPlayerCrow(crow);
+    wr.controls.enabled = false;
+    crowCamYaw   = Math.atan2(-crow.facingX, -crow.facingZ);
+    crowCamPitch = 0.2;
+    Object.keys(crowKeys).forEach(k => crowKeys[k] = false);
+    crowSpaceWas = false;
+    canvas.requestPointerLock().catch(() => {});
+  }
+
+  function exitCrowMode() {
+    if (!controlledCrow) return;
+    const c = controlledCrow;
+    controlledCrow = null;
+    audio.stopMusic();
+    crowRenderer.setPlayerCrow(null);
+    wr.controls.target.set(c.x * TILE_SIZE, 0, c.z * TILE_SIZE);
+    wr.controls.enabled = true;
+    wr.controls.update();
+    document.exitPointerLock?.();
+    Object.keys(crowKeys).forEach(k => crowKeys[k] = false);
+  }
+
+  document.addEventListener('keydown', e => {
+    if (!controlledCrow) return;
+    switch (e.key) {
+      case 'w': case 'ArrowUp':    crowKeys.w = true;  break;
+      case 's': case 'ArrowDown':  crowKeys.s = true;  break;
+      case 'a': case 'ArrowLeft':  crowKeys.a = true;  break;
+      case 'd': case 'ArrowRight': crowKeys.d = true;  break;
+      case ' ': e.preventDefault(); crowKeys.space = true; break;
+      case 'Escape': exitCrowMode(); break;
+    }
+  });
+  document.addEventListener('keyup', e => {
+    switch (e.key) {
+      case 'w': case 'ArrowUp':    crowKeys.w = false; break;
+      case 's': case 'ArrowDown':  crowKeys.s = false; break;
+      case 'a': case 'ArrowLeft':  crowKeys.a = false; break;
+      case 'd': case 'ArrowRight': crowKeys.d = false; break;
+      case ' ': crowKeys.space = false; break;
+    }
+  });
+  document.addEventListener('mousemove', e => {
+    if (!controlledCrow || document.pointerLockElement !== canvas) return;
+    crowCamYaw   += e.movementX * 0.003;
+    crowCamPitch  = Math.max(-1.3, Math.min(1.5, crowCamPitch + e.movementY * 0.003));
+  });
+  canvas.addEventListener('click', () => {
+    if (controlledCrow && document.pointerLockElement !== canvas) {
+      canvas.requestPointerLock().catch(() => {});
+    }
+  });
 
   document.addEventListener('keydown', e => {
     if (e.ctrlKey || e.altKey || e.metaKey) return;
@@ -321,6 +393,7 @@ async function init() {
     world.getWildHorseSpawnPoints(CROW_COUNT).forEach(p => crows.push(new Crow(p.x, p.z)));
     crowRenderer = new CrowRenderer(wr.scene, crows, world);
     setCrowPlacementMode(false);
+    exitCrowMode();
     boats.length = 0;
     sailboatRenderer = new SailboatRenderer(wr.scene, boats);
     minimap = new MinimapRenderer(world);
@@ -464,6 +537,17 @@ async function init() {
     const ndc = wr.getNDC(e);
     raycaster.setFromCamera(ndc, wr.camera);
     if (!raycaster.ray.intersectPlane(groundPlane, groundPoint)) return;
+
+    // ── Crow possession: click a grounded crow to control it ──────────
+    if (!crowPlacementMode) {
+      let crowHit = null, crowBestDist = PICK_RADIUS * 1.5;
+      for (const crow of crows) {
+        if (crow.y > 1.5) continue;
+        const dist = Math.hypot(groundPoint.x - crow.x * TILE_SIZE, groundPoint.z - crow.z * TILE_SIZE);
+        if (dist < crowBestDist) { crowBestDist = dist; crowHit = crow; }
+      }
+      if (crowHit) { enterCrowMode(crowHit); return; }
+    }
 
     // ── Crow placement mode ────────────────────────────────────────────
     if (crowPlacementMode) {
@@ -1005,7 +1089,9 @@ async function init() {
       for (const h of horses) h.tick(delta, world, horses);
       for (const f of foxes) f.tick(delta, world, agents);
       for (const d of deer) d.tick(delta, world, agents, foxes);
-      for (const c of crows) c.tick(delta, world, agents);
+      for (const c of crows) {
+        if (c !== controlledCrow) c.tick(delta, world, agents);
+      }
       for (const agent of agents) {
         if (agent?.health > 0) {
           try {
@@ -1154,7 +1240,55 @@ async function init() {
     horseRenderer.update();
     foxRenderer.update();
     deerRenderer.update();
+    // ── Controlled crow: movement ─────────────────────────────────────
+    if (controlledCrow && realDelta > 0) {
+      const c = controlledCrow;
+      const fwdX = -Math.sin(crowCamYaw), fwdZ = -Math.cos(crowCamYaw);
+      const rgtX = -Math.sin(crowCamYaw - Math.PI / 2), rgtZ = -Math.cos(crowCamYaw - Math.PI / 2);
+      let mx = 0, mz = 0;
+      if (crowKeys.w) { mx += fwdX; mz += fwdZ; }
+      if (crowKeys.s) { mx -= fwdX; mz -= fwdZ; }
+      if (crowKeys.a) { mx -= rgtX; mz -= rgtZ; }
+      if (crowKeys.d) { mx += rgtX; mz += rgtZ; }
+      const mLen = Math.hypot(mx, mz);
+      const isFlying = c.state === 'flying';
+      const spd = isFlying ? CROW_FLY_SPEED : CROW_HOP_SPEED;
+      if (mLen > 0) {
+        mx /= mLen; mz /= mLen;
+        c.facingX = mx; c.facingZ = mz;
+        c.x = Math.max(0.5, Math.min(world.width  - 0.5, c.x + mx * spd * realDelta));
+        c.z = Math.max(0.5, Math.min(world.height - 0.5, c.z + mz * spd * realDelta));
+        c.walkPhase += realDelta * spd * 2.6;
+        if (!isFlying) c.state = 'hopping';
+      } else if (!isFlying) {
+        c.state = 'idle';
+      }
+      if (crowKeys.space && !crowSpaceWas) c.state = c.state === 'flying' ? 'idle' : 'flying';
+      crowSpaceWas = crowKeys.space;
+      if (c.state === 'flying') {
+        c.y += (CROW_FLY_HEIGHT - c.y) * Math.min(1, realDelta * 2.2);
+        c.wingPhase += realDelta * 4.5;
+      } else {
+        c.y += (0 - c.y) * Math.min(1, realDelta * 4);
+      }
+    }
+
     crowRenderer.update(delta > 0 ? delta : 0);
+
+    // ── Crow camera ───────────────────────────────────────────────────
+    if (controlledCrow) {
+      const c   = controlledCrow;
+      const cwx = c.x * TILE_SIZE;
+      const cwz = c.z * TILE_SIZE;
+      const surfY = TerrainRenderer.getHeightAt(cwx, cwz);
+      const flyY  = c.y;
+      const camX = cwx + Math.sin(crowCamYaw) * CROW_CAM_DIST * Math.cos(crowCamPitch);
+      const camZ = cwz + Math.cos(crowCamYaw) * CROW_CAM_DIST * Math.cos(crowCamPitch);
+      const camY = surfY + flyY + CROW_CAM_HEIGHT + CROW_CAM_DIST * Math.sin(crowCamPitch);
+      wr.camera.position.set(camX, Math.max(surfY + 0.3, camY), camZ);
+      wr.camera.lookAt(cwx, surfY + flyY + 0.35, cwz);
+    }
+
     if (boats.length) { _updateBoats(delta > 0 ? delta : 0); sailboatRenderer.update(); }
     butterflyRenderer.update(delta > 0 ? delta : 0, weather.current === 'CLEAR');
     beeRenderer.update(delta > 0 ? delta : 0, weather.current === 'CLEAR');
@@ -1165,7 +1299,7 @@ async function init() {
     rabbitRenderer.update(delta > 0 ? delta : 0, agents);
     buildingRenderer.checkAgents(agents);
     wr.updateRain(realDelta, weather.isRaining, weather.isStorm);
-    wr.render();
+    wr.render(!!controlledCrow);
     minimap.update(agents);
     updateHUD();
     } catch (e) {

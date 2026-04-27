@@ -527,8 +527,8 @@ export class WorldRenderer {
     (this._flashLights ??= []).push({ light, t: 0 });
   }
 
-  render() {
-    this.controls.update();
+  render(skipControls = false) {
+    if (!skipControls) this.controls.update();
 
     // Compute render-frame delta (used for flash light decay)
     const _now = performance.now() / 1000;

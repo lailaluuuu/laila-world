@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { TileType, TILE_SIZE } from '../simulation/World.js';
 
+// Height grid for getHeightAt() bilinear queries — populated by _buildTerrainMesh
+let _heightGrid = null, _heightNX = 0, _heightNZ = 0;
+
 /** How far elevated (layer=1) platforms float above ground level */
 export const ELEVATED_HEIGHT = 1.8;
 
@@ -3428,6 +3431,24 @@ export class TerrainRenderer {
    * Accepts either a tile-type string (backward-compat) or a tile object.
    * Tile objects with layer=1 are offset by ELEVATED_HEIGHT.
    */
+  static getHeightAt(wx, wz) {
+    if (!_heightGrid) return 0.14;
+    const fx  = wx / TILE_SIZE;
+    const fz  = wz / TILE_SIZE;
+    const ix0 = Math.max(0, Math.min(_heightNX - 2, Math.floor(fx)));
+    const iz0 = Math.max(0, Math.min(_heightNZ - 2, Math.floor(fz)));
+    const tx  = fx - ix0;
+    const tz  = fz - iz0;
+    const h00 = _heightGrid[ iz0      * _heightNX + ix0    ];
+    const h10 = _heightGrid[ iz0      * _heightNX + ix0 + 1];
+    const h01 = _heightGrid[(iz0 + 1) * _heightNX + ix0    ];
+    const h11 = _heightGrid[(iz0 + 1) * _heightNX + ix0 + 1];
+    return h00 * (1 - tx) * (1 - tz) +
+           h10 *      tx  * (1 - tz) +
+           h01 * (1 - tx) *      tz  +
+           h11 *      tx  *      tz;
+  }
+
   static surfaceY(typeOrTile) {
     if (typeof typeOrTile === 'string') return TILE_HEIGHT[typeOrTile] ?? 0.14;
     if (!typeOrTile || typeof typeOrTile !== 'object') return 0.14;
@@ -3559,6 +3580,12 @@ export class TerrainRenderer {
         colors[vi * 3 + 2] = totalB / count;
       }
     }
+
+    // Store heights for getHeightAt() bilinear queries
+    _heightGrid = new Float32Array(NX * NZ);
+    for (let i = 0; i < NX * NZ; i++) _heightGrid[i] = positions[i * 3 + 1];
+    _heightNX = NX;
+    _heightNZ = NZ;
 
     // Two triangles per cell (CCW so normals face up)
     for (let iz = 0; iz < H; iz++) {
